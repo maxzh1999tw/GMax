@@ -93,26 +93,51 @@ test('流程中的子代理回報不顯示，玩家自己的輸入照常顯示',
   await player.unmount()
 })
 
-test('Mod 依票證派出審查子代理；沒有成功啟動就回報失敗', async ($, on) => {
-  const spawned: { subagent_type?: string; model?: string; prompt: string; description?: string }[] = []
-  // 測試環境沒有 core，hook 回答的 spawn 不帶 agentId，所以這裡走的是啟動失敗路徑
-  on('agent.spawn', ($, e) => {
-    spawned.push(e as never)
+test('Mod 直接呼叫模型完成審查：指定模型與思考程度、錯誤會重試、不開子代理', async ($, on) => {
+  const asked: { model: string; effort?: string; prompt: string }[] = []
+  const submitted: Record<string, unknown>[] = []
+  let spawned = 0
+  on('agent.spawn', () => {
+    spawned++
     return { model: 'm' }
   })
+  on('tool.call', { tool: 'mcp__plugin_gmax_gmax__gmax_review_packet' }, ($, e) => ({
+    result: {}, text: `資料 ${(e as unknown as { ticket: string }).ticket}`,
+  }))
+  on('tool.call', { tool: 'mcp__plugin_gmax_gmax__gmax_review_submit' }, ($, e) => {
+    submitted.push(e as never)
+    const bad = submitted.length === 1
+    return { result: {}, text: bad ? '引用的 ID 不存在' : 'ok', isError: bad ? true : undefined } as never
+  })
+  on('model.complete', ($, e) => {
+    asked.push(e as never)
+    const text = asked.length === 1 ? '不是 JSON' : '```json\n{"verdict":"pass","notes":"好"}\n```'
+    return { value: { isAnswered: true, text, usage: {} } } as never
+  })
+
   const reply = await ($.tool.call({
     tool: 'mcp__gmax__gmax_run_reviews',
-    input: {
-      story_id: 's1',
-      reviewers: [
-        { ticket: 'T-1', agent: 'gmax-logic-reviewer', model: 'opus' },
-        { ticket: 'T-2', agent: 'gmax-registry-reviewer', model: 'haiku' },
-      ],
-    },
+    story_id: 's1',
+    reviewers: [{ ticket: 'T-1', agent: 'gmax-logic-reviewer', model: 'opus', effort: 'high' }],
   } as never) as Promise<{ text: string }>)
-  expect(spawned.map(s => s.subagent_type)).toEqual(['gmax:gmax-logic-reviewer', 'gmax:gmax-registry-reviewer'])
-  expect(spawned[0]).toMatchObject({ model: 'opus', prompt: 'story_id=s1 ticket=T-1', description: 'GMax 審稿' })
-  expect(reply.text).toContain('2 個審查子代理沒有正常結束')
+
+  expect(spawned).toBe(0)
+  expect(asked[0]).toMatchObject({ model: 'opus', effort: 'high', prompt: '資料 T-1' })
+  expect(asked[1]!.prompt).toContain('不是有效的 JSON')
+  expect(asked[2]!.prompt).toContain('引用的 ID 不存在')
+  expect(submitted[1]).toMatchObject({ story_id: 's1', ticket: 'T-1', verdict: 'pass', notes: '好' })
+  expect(reply.text).toContain('審查都已完成')
+})
+
+test('模型一直失敗時回報未完成，不會卡住', async ($, on) => {
+  on('tool.call', { tool: 'mcp__plugin_gmax_gmax__gmax_review_packet' }, () => ({ result: {}, text: '資料' }))
+  on('model.complete', () => ({ value: { isAnswered: false, reason: 'empty-reply', usage: {} } }) as never)
+  const reply = await ($.tool.call({
+    tool: 'mcp__gmax__gmax_run_reviews',
+    story_id: 's1',
+    reviewers: [{ ticket: 'T-1', agent: 'gmax-logic-reviewer', model: 'opus' }],
+  } as never) as Promise<{ text: string }>)
+  expect(reply.text).toContain('1 項審查沒有完成')
 })
 
 test('審查還在跑時不提醒，全部回報後才提醒', async ($, on) => {
