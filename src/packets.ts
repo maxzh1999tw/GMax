@@ -1,12 +1,12 @@
-import { budgetsOf, currentAct, isFinalAct, type Fact, type Role, type StoryState } from './state.js';
+import { budgetsOf, currentAct, isFinalAct, storyReadyToEnd, type Fact, type Role, type StoryState } from './state.js';
 
 const RECENT_TURNS = 3;
-const DUE_SOON_TURNS = 2;
 
 const GROUND_RULES = [
   '玩家事實（source=player）一律成立，不可因它與劇本衝突而退稿；衝突時應該修改的是劇本。',
   '文風、用詞與美感偏好不可作為退稿理由，只能寫在 notes。',
   '只在確定有問題時退稿，每項問題都要引用 ID 或草稿原文，並提出具體修改建議。',
+  '回合數只是節奏參考。不可因為回合數快到或超過參考值要求收尾，也不可因為還沒到參考值要求拖長；節奏是否合適只看劇情。',
   '最終回覆只寫 gmax_review_submit 回傳的 reply_text，不可重述任何內容。',
 ];
 
@@ -48,7 +48,7 @@ const CHECKLISTS: Record<Role, string[]> = {
     '逐條列出草稿的新斷言，判斷它是：既有資訊、無害細節、玩家事實的必要結果，或 AI 自行發想。',
     'AI 自行發想且會影響情節的內容，必須依參數定義申報。漏報、多報或分類錯誤都要退稿，並用 budget_correction 寫出該參數的正確次數。',
     '玩家事實與吸收它所必需的修改一律不扣參數。',
-    '故事是否朝結局收束：後段不應繼續發散、堆疊反轉；逾期節點與未收束支線要被處理。',
+    '故事是否朝結局收束：後段不應繼續發散、堆疊反轉；未處理的節點與未收束的支線要有去處。這裡看劇情進度，不看回合數。',
   ],
   registry: [
     '草稿裡會影響後續的新設定，是否都登記在 new_facts。天氣、擺設、場景氣氛這類不影響後續的細節不用登記；拿不準就寫在 notes，不要退稿。',
@@ -94,16 +94,11 @@ function directives(s: StoryState): string[] {
   const turn = s.current?.number ?? (s.turns.at(-1)?.number ?? 0) + 1;
   const act = currentAct(s);
   if (turn === 1) out.push('這是開場，玩家還沒行動。只鋪陳情境與可行動的線索，不可替玩家調查或做決定。');
-  const beats = Object.values(s.beats).filter(b => b.must_hit && b.status === 'pending');
-  for (const b of beats) {
-    if (b.deadline_turn && b.deadline_turn < turn) out.push(`必經節點 ${b.id}（${b.title}）已逾期，本回合必須達成或調整。`);
-    else if (b.deadline_turn && b.deadline_turn <= turn + DUE_SOON_TURNS) out.push(`必經節點 ${b.id}（${b.title}）將在第 ${b.deadline_turn} 回合到期，請開始推進。`);
-  }
-  if (act && turn > act.target_end_turn) out.push(`目前的幕「${act.title}」已超過目標回合（${act.target_end_turn}），請收束本幕。`);
   if (isFinalAct(s)) {
     const open = Object.values(s.threads).filter(t => t.status === 'open');
     out.push(`已進入最後一幕：AI 不可自行開新支線，請朝結局收束。尚有 ${open.length} 條支線未收束。`);
   }
+  if (storyReadyToEnd(s)) out.push('必經節點與支線都已處理：故事可以在這段結束，不用為了湊回合拖長。');
   for (const t of Object.values(s.threads)) {
     if (t.status !== 'open' || !t.resolve_by_act || !s.script) continue;
     const acts = s.script.acts.map(a => a.id);
@@ -134,6 +129,12 @@ export function writerBrief(s: StoryState, full: boolean) {
     player_facts: (s.current?.player_fact_ids ?? []).map(id => factView(s.facts[id]!)),
     act,
     act_beats: Object.values(s.beats).filter(b => b.act === act?.id),
+    pacing: {
+      turn,
+      target_turns: s.settings.target_turns,
+      act_target_end_turn: act?.target_end_turn,
+      note: '回合數只是節奏參考。依劇情決定快慢：該結束就結束，還需要鋪陳就繼續，不要為了回合數趕或拖。',
+    },
     directives: directives(s),
     budgets: budgetsView(s),
     open_threads: Object.values(s.threads).filter(t => t.status === 'open'),

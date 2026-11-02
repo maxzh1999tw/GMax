@@ -98,10 +98,10 @@ describe('劇本', () => {
     expect(e.storyStatus(id).quality.script_issues_accepted).toBe(1);
   });
 
-  it('開場算第 1 回合：期限設在開場會警告，開局也會說明', () => {
+  it('開場算第 1 回合：節點排在開場會警告，開局也會說明', () => {
     const e = newEngine();
     const created = e.storyCreate('t', { target_turns: 4 });
-    expect(created.turn_rule).toContain('玩家可行動 3 次');
+    expect(created.turn_rule).toContain('約等於玩家行動 3 次');
     const sc = script();
     sc.beats[0]!.deadline_turn = 1;
     const r = e.scriptSubmit(created.story_id, sc) as unknown as Sub;
@@ -190,7 +190,7 @@ describe('回合', () => {
     expect(r.problems.join()).toContain('不是玩家事實');
   });
 
-  it('最後一幕不可自行開支線，逾期節點必須處理', () => {
+  it('最後一幕不可自行開支線', () => {
     const e = newEngine();
     const id = activeStory(e);
     playTurn(e, id, '一', { beat_updates: [{ beat: 'b1', status: 'hit', note: 'n' }] });
@@ -200,14 +200,34 @@ describe('回合', () => {
       spends: [{ budget: 'new_thread', excerpt: '新線', reason: 'r' }],
     }) as unknown as Sub;
     expect(r.problems.join()).toContain('最後一幕');
+  });
 
-    const e2 = newEngine();
-    const id2 = activeStory(e2);
-    playTurn(e2, id2, '一');
-    playTurn(e2, id2, '二');
-    e2.turnBegin(id2, 'x');
-    const r2 = e2.draftSubmit(id2, '三', {}) as unknown as Sub;
-    expect(r2.problems.join()).toContain('已逾期');
+  it('回合數只是參考：超過參考回合不催促也不擋稿', () => {
+    const e = newEngine();
+    const id = activeStory(e, { target_turns: 2 });
+    for (const t of ['一', '二', '三', '四']) playTurn(e, id, t);
+    const b = e.turnBegin(id, '繼續').brief as { directives: string[]; pacing: { target_turns: number } };
+    expect(b.pacing.target_turns).toBe(2);
+    expect(b.directives.join()).not.toMatch(/逾期|到期|超過目標/);
+    expect((e.draftSubmit(id, '五', {}) as unknown as Sub).ok).toBe(true);
+  });
+
+  it('劇情處理完就能提早結束，也不會要求湊回合', () => {
+    const e = newEngine();
+    const id = activeStory(e, { target_turns: 30 });
+    e.turnBegin(id, '指認');
+    const done = { beat_updates: [{ beat: 'b1', status: 'hit', note: 'n' }, { beat: 'b2', status: 'hit', note: 'n' }], threads_resolved: [{ thread: 't1', note: 'n' }] };
+    passAll(e, id, (e.draftSubmit(id, '真相大白。', done) as unknown as Sub).reviewers);
+    expect(e.turnCommit(id).next_action).toContain('gmax_story_end');
+    expect(e.storyEnd(id, 'e1').ok).toBe(true);
+  });
+
+  it('審查規則禁止用回合數當退稿理由', () => {
+    const e = newEngine();
+    const id = activeStory(e);
+    e.turnBegin(id, 'x');
+    const r = e.draftSubmit(id, '雪。', {}) as unknown as Sub;
+    expect(JSON.stringify(e.reviewPacket(r.reviewers[0]!.ticket, id))).toContain('回合數只是節奏參考');
   });
 
   it('修改後只重審被否決者；大改或宣告變動才擴大', () => {

@@ -52,7 +52,7 @@ const preferenceFields = {
   budgets: z.record(z.string(), budgetSchema),
   max_revisions: z.number().int().min(0).max(10),
   min_clues_per_secret: z.number().int().min(0).max(10),
-  target_turns: z.number().int().min(1).max(1000).describe('總回合數，含開場。開場是第 1 回合，玩家可行動 target_turns - 1 次'),
+  target_turns: z.number().int().min(1).max(1000).describe('預期的總回合數，含開場，只是節奏參考，不會強制收尾或拖長'),
 };
 
 export const preferencesSchema = z.object({
@@ -119,7 +119,7 @@ export const scriptSchema = z.object({
     id,
     title: z.string().min(1),
     goal: z.string().min(1),
-    target_end_turn: z.number().int().min(1),
+    target_end_turn: z.number().int().min(1).describe('預期結束的回合，只是節奏參考'),
   })).min(1),
   beats: z.array(z.object({
     id,
@@ -127,7 +127,7 @@ export const scriptSchema = z.object({
     title: z.string().min(1),
     description: z.string().min(1),
     must_hit: z.boolean().default(true),
-    deadline_turn: z.number().int().min(1).optional(),
+    deadline_turn: z.number().int().min(1).optional().describe('預期發生的回合，只是節奏參考，超過也不會被擋'),
     reveals: z.array(id).default([]),
   })).min(1),
   threads: z.array(threadSchema).default([]),

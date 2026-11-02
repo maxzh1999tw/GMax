@@ -36706,7 +36706,7 @@ var preferenceFields = {
   budgets: external_exports.record(external_exports.string(), budgetSchema),
   max_revisions: external_exports.number().int().min(0).max(10),
   min_clues_per_secret: external_exports.number().int().min(0).max(10),
-  target_turns: external_exports.number().int().min(1).max(1e3).describe("\u7E3D\u56DE\u5408\u6578\uFF0C\u542B\u958B\u5834\u3002\u958B\u5834\u662F\u7B2C 1 \u56DE\u5408\uFF0C\u73A9\u5BB6\u53EF\u884C\u52D5 target_turns - 1 \u6B21")
+  target_turns: external_exports.number().int().min(1).max(1e3).describe("\u9810\u671F\u7684\u7E3D\u56DE\u5408\u6578\uFF0C\u542B\u958B\u5834\uFF0C\u53EA\u662F\u7BC0\u594F\u53C3\u8003\uFF0C\u4E0D\u6703\u5F37\u5236\u6536\u5C3E\u6216\u62D6\u9577")
 };
 var preferencesSchema = external_exports.object({
   language: preferenceFields.language.default("\u7E41\u9AD4\u4E2D\u6587"),
@@ -36767,7 +36767,7 @@ var scriptSchema = external_exports.object({
     id,
     title: external_exports.string().min(1),
     goal: external_exports.string().min(1),
-    target_end_turn: external_exports.number().int().min(1)
+    target_end_turn: external_exports.number().int().min(1).describe("\u9810\u671F\u7D50\u675F\u7684\u56DE\u5408\uFF0C\u53EA\u662F\u7BC0\u594F\u53C3\u8003")
   })).min(1),
   beats: external_exports.array(external_exports.object({
     id,
@@ -36775,7 +36775,7 @@ var scriptSchema = external_exports.object({
     title: external_exports.string().min(1),
     description: external_exports.string().min(1),
     must_hit: external_exports.boolean().default(true),
-    deadline_turn: external_exports.number().int().min(1).optional(),
+    deadline_turn: external_exports.number().int().min(1).optional().describe("\u9810\u671F\u767C\u751F\u7684\u56DE\u5408\uFF0C\u53EA\u662F\u7BC0\u594F\u53C3\u8003\uFF0C\u8D85\u904E\u4E5F\u4E0D\u6703\u88AB\u64CB"),
     reveals: external_exports.array(id).default([])
   })).min(1),
   threads: external_exports.array(threadSchema).default([]),
@@ -37159,6 +37159,9 @@ function isFinalAct(s) {
   const act = currentAct(s);
   return !!act && act.id === s.script?.acts.at(-1)?.id;
 }
+function storyReadyToEnd(s) {
+  return !Object.values(s.beats).some((b) => b.must_hit && b.status === "pending") && !Object.values(s.threads).some((t) => t.status === "open");
+}
 function statusLine(s) {
   const turn = s.current?.number ?? s.turns.at(-1)?.number ?? 0;
   const budgets = Object.values(budgetsOf(s)).map((b) => `${b.label} ${b.spent}/${b.limit}`);
@@ -37289,11 +37292,11 @@ var Store = class {
 
 // src/packets.ts
 var RECENT_TURNS = 3;
-var DUE_SOON_TURNS = 2;
 var GROUND_RULES = [
   "\u73A9\u5BB6\u4E8B\u5BE6\uFF08source=player\uFF09\u4E00\u5F8B\u6210\u7ACB\uFF0C\u4E0D\u53EF\u56E0\u5B83\u8207\u5287\u672C\u885D\u7A81\u800C\u9000\u7A3F\uFF1B\u885D\u7A81\u6642\u61C9\u8A72\u4FEE\u6539\u7684\u662F\u5287\u672C\u3002",
   "\u6587\u98A8\u3001\u7528\u8A5E\u8207\u7F8E\u611F\u504F\u597D\u4E0D\u53EF\u4F5C\u70BA\u9000\u7A3F\u7406\u7531\uFF0C\u53EA\u80FD\u5BEB\u5728 notes\u3002",
   "\u53EA\u5728\u78BA\u5B9A\u6709\u554F\u984C\u6642\u9000\u7A3F\uFF0C\u6BCF\u9805\u554F\u984C\u90FD\u8981\u5F15\u7528 ID \u6216\u8349\u7A3F\u539F\u6587\uFF0C\u4E26\u63D0\u51FA\u5177\u9AD4\u4FEE\u6539\u5EFA\u8B70\u3002",
+  "\u56DE\u5408\u6578\u53EA\u662F\u7BC0\u594F\u53C3\u8003\u3002\u4E0D\u53EF\u56E0\u70BA\u56DE\u5408\u6578\u5FEB\u5230\u6216\u8D85\u904E\u53C3\u8003\u503C\u8981\u6C42\u6536\u5C3E\uFF0C\u4E5F\u4E0D\u53EF\u56E0\u70BA\u9084\u6C92\u5230\u53C3\u8003\u503C\u8981\u6C42\u62D6\u9577\uFF1B\u7BC0\u594F\u662F\u5426\u5408\u9069\u53EA\u770B\u5287\u60C5\u3002",
   "\u6700\u7D42\u56DE\u8986\u53EA\u5BEB gmax_review_submit \u56DE\u50B3\u7684 reply_text\uFF0C\u4E0D\u53EF\u91CD\u8FF0\u4EFB\u4F55\u5167\u5BB9\u3002"
 ];
 var SUBMIT_FORMAT = {
@@ -37330,7 +37333,7 @@ var CHECKLISTS = {
     "\u9010\u689D\u5217\u51FA\u8349\u7A3F\u7684\u65B0\u65B7\u8A00\uFF0C\u5224\u65B7\u5B83\u662F\uFF1A\u65E2\u6709\u8CC7\u8A0A\u3001\u7121\u5BB3\u7D30\u7BC0\u3001\u73A9\u5BB6\u4E8B\u5BE6\u7684\u5FC5\u8981\u7D50\u679C\uFF0C\u6216 AI \u81EA\u884C\u767C\u60F3\u3002",
     "AI \u81EA\u884C\u767C\u60F3\u4E14\u6703\u5F71\u97FF\u60C5\u7BC0\u7684\u5167\u5BB9\uFF0C\u5FC5\u9808\u4F9D\u53C3\u6578\u5B9A\u7FA9\u7533\u5831\u3002\u6F0F\u5831\u3001\u591A\u5831\u6216\u5206\u985E\u932F\u8AA4\u90FD\u8981\u9000\u7A3F\uFF0C\u4E26\u7528 budget_correction \u5BEB\u51FA\u8A72\u53C3\u6578\u7684\u6B63\u78BA\u6B21\u6578\u3002",
     "\u73A9\u5BB6\u4E8B\u5BE6\u8207\u5438\u6536\u5B83\u6240\u5FC5\u9700\u7684\u4FEE\u6539\u4E00\u5F8B\u4E0D\u6263\u53C3\u6578\u3002",
-    "\u6545\u4E8B\u662F\u5426\u671D\u7D50\u5C40\u6536\u675F\uFF1A\u5F8C\u6BB5\u4E0D\u61C9\u7E7C\u7E8C\u767C\u6563\u3001\u5806\u758A\u53CD\u8F49\uFF1B\u903E\u671F\u7BC0\u9EDE\u8207\u672A\u6536\u675F\u652F\u7DDA\u8981\u88AB\u8655\u7406\u3002"
+    "\u6545\u4E8B\u662F\u5426\u671D\u7D50\u5C40\u6536\u675F\uFF1A\u5F8C\u6BB5\u4E0D\u61C9\u7E7C\u7E8C\u767C\u6563\u3001\u5806\u758A\u53CD\u8F49\uFF1B\u672A\u8655\u7406\u7684\u7BC0\u9EDE\u8207\u672A\u6536\u675F\u7684\u652F\u7DDA\u8981\u6709\u53BB\u8655\u3002\u9019\u88E1\u770B\u5287\u60C5\u9032\u5EA6\uFF0C\u4E0D\u770B\u56DE\u5408\u6578\u3002"
   ],
   registry: [
     "\u8349\u7A3F\u88E1\u6703\u5F71\u97FF\u5F8C\u7E8C\u7684\u65B0\u8A2D\u5B9A\uFF0C\u662F\u5426\u90FD\u767B\u8A18\u5728 new_facts\u3002\u5929\u6C23\u3001\u64FA\u8A2D\u3001\u5834\u666F\u6C23\u6C1B\u9019\u985E\u4E0D\u5F71\u97FF\u5F8C\u7E8C\u7684\u7D30\u7BC0\u4E0D\u7528\u767B\u8A18\uFF1B\u62FF\u4E0D\u6E96\u5C31\u5BEB\u5728 notes\uFF0C\u4E0D\u8981\u9000\u7A3F\u3002",
@@ -37382,16 +37385,11 @@ function directives(s) {
   const turn = s.current?.number ?? (s.turns.at(-1)?.number ?? 0) + 1;
   const act = currentAct(s);
   if (turn === 1) out.push("\u9019\u662F\u958B\u5834\uFF0C\u73A9\u5BB6\u9084\u6C92\u884C\u52D5\u3002\u53EA\u92EA\u9673\u60C5\u5883\u8207\u53EF\u884C\u52D5\u7684\u7DDA\u7D22\uFF0C\u4E0D\u53EF\u66FF\u73A9\u5BB6\u8ABF\u67E5\u6216\u505A\u6C7A\u5B9A\u3002");
-  const beats = Object.values(s.beats).filter((b) => b.must_hit && b.status === "pending");
-  for (const b of beats) {
-    if (b.deadline_turn && b.deadline_turn < turn) out.push(`\u5FC5\u7D93\u7BC0\u9EDE ${b.id}\uFF08${b.title}\uFF09\u5DF2\u903E\u671F\uFF0C\u672C\u56DE\u5408\u5FC5\u9808\u9054\u6210\u6216\u8ABF\u6574\u3002`);
-    else if (b.deadline_turn && b.deadline_turn <= turn + DUE_SOON_TURNS) out.push(`\u5FC5\u7D93\u7BC0\u9EDE ${b.id}\uFF08${b.title}\uFF09\u5C07\u5728\u7B2C ${b.deadline_turn} \u56DE\u5408\u5230\u671F\uFF0C\u8ACB\u958B\u59CB\u63A8\u9032\u3002`);
-  }
-  if (act && turn > act.target_end_turn) out.push(`\u76EE\u524D\u7684\u5E55\u300C${act.title}\u300D\u5DF2\u8D85\u904E\u76EE\u6A19\u56DE\u5408\uFF08${act.target_end_turn}\uFF09\uFF0C\u8ACB\u6536\u675F\u672C\u5E55\u3002`);
   if (isFinalAct(s)) {
     const open2 = Object.values(s.threads).filter((t) => t.status === "open");
     out.push(`\u5DF2\u9032\u5165\u6700\u5F8C\u4E00\u5E55\uFF1AAI \u4E0D\u53EF\u81EA\u884C\u958B\u65B0\u652F\u7DDA\uFF0C\u8ACB\u671D\u7D50\u5C40\u6536\u675F\u3002\u5C1A\u6709 ${open2.length} \u689D\u652F\u7DDA\u672A\u6536\u675F\u3002`);
   }
+  if (storyReadyToEnd(s)) out.push("\u5FC5\u7D93\u7BC0\u9EDE\u8207\u652F\u7DDA\u90FD\u5DF2\u8655\u7406\uFF1A\u6545\u4E8B\u53EF\u4EE5\u5728\u9019\u6BB5\u7D50\u675F\uFF0C\u4E0D\u7528\u70BA\u4E86\u6E4A\u56DE\u5408\u62D6\u9577\u3002");
   for (const t of Object.values(s.threads)) {
     if (t.status !== "open" || !t.resolve_by_act || !s.script) continue;
     const acts = s.script.acts.map((a) => a.id);
@@ -37420,6 +37418,12 @@ function writerBrief(s, full) {
     player_facts: (s.current?.player_fact_ids ?? []).map((id2) => factView(s.facts[id2])),
     act,
     act_beats: Object.values(s.beats).filter((b) => b.act === act?.id),
+    pacing: {
+      turn,
+      target_turns: s.settings.target_turns,
+      act_target_end_turn: act?.target_end_turn,
+      note: "\u56DE\u5408\u6578\u53EA\u662F\u7BC0\u594F\u53C3\u8003\u3002\u4F9D\u5287\u60C5\u6C7A\u5B9A\u5FEB\u6162\uFF1A\u8A72\u7D50\u675F\u5C31\u7D50\u675F\uFF0C\u9084\u9700\u8981\u92EA\u9673\u5C31\u7E7C\u7E8C\uFF0C\u4E0D\u8981\u70BA\u4E86\u56DE\u5408\u6578\u8D95\u6216\u62D6\u3002"
+    },
     directives: directives(s),
     budgets: budgetsView(s),
     open_threads: Object.values(s.threads).filter((t) => t.status === "open"),
@@ -37660,14 +37664,13 @@ function validateScript(script, settings) {
   }
   for (const b of script.beats) {
     if (b.must_hit && b.deadline_turn === 1) {
-      warnings.push(`\u7BC0\u9EDE ${b.id} \u7684\u671F\u9650\u662F\u7B2C 1 \u56DE\u5408\uFF0C\u4F46\u7B2C 1 \u56DE\u5408\u662F\u958B\u5834\uFF0C\u73A9\u5BB6\u9084\u6C92\u884C\u52D5\u3002\u9700\u8981\u73A9\u5BB6\u884C\u52D5\u7684\u7BC0\u9EDE\u8ACB\u628A\u671F\u9650\u8A2D\u5728\u7B2C 2 \u56DE\u5408\u4EE5\u5F8C\u3002`);
+      warnings.push(`\u7BC0\u9EDE ${b.id} \u7684\u53C3\u8003\u56DE\u5408\u662F\u7B2C 1 \u56DE\u5408\uFF0C\u4F46\u7B2C 1 \u56DE\u5408\u662F\u958B\u5834\uFF0C\u73A9\u5BB6\u9084\u6C92\u884C\u52D5\u3002\u9700\u8981\u73A9\u5BB6\u884C\u52D5\u7684\u7BC0\u9EDE\u8ACB\u6392\u5728\u7B2C 2 \u56DE\u5408\u4EE5\u5F8C\u3002`);
     }
   }
   return { errors, warnings };
 }
 function checkDraft(s, text, d, conservative) {
   const problems = [];
-  const cur = s.current;
   const budgets = budgetsOf(s);
   const isPlayerFact = (id2) => !!id2 && s.facts[id2]?.source === "player";
   const spendCount = (budget) => d.spends.filter((x) => x.budget === budget).length;
@@ -37742,12 +37745,6 @@ function checkDraft(s, text, d, conservative) {
   if (paidChanges > spendCount("retcon")) {
     problems.push("\u975E\u73A9\u5BB6\u4E8B\u5BE6\u9020\u6210\u7684\u4FEE\u6539\u6216\u653E\u68C4\u5FC5\u7D93\u7BC0\u9EDE\uFF0C\u90FD\u5FC5\u9808\u7533\u5831 retcon\u3002");
   }
-  const handled = new Set(d.beat_updates.map((b) => b.beat));
-  for (const beat of Object.values(s.beats)) {
-    if (beat.must_hit && beat.status === "pending" && beat.deadline_turn && beat.deadline_turn < cur.number && !handled.has(beat.id)) {
-      problems.push(`\u5FC5\u7D93\u7BC0\u9EDE ${beat.id}\uFF08${beat.title}\uFF09\u5DF2\u903E\u671F\uFF0C\u672C\u56DE\u5408\u5FC5\u9808\u9054\u6210\u6216\u8ABF\u6574\u3002`);
-    }
-  }
   return problems;
 }
 var comparableDeclaration = (d) => JSON.stringify(d, (key, value) => key === "note" ? void 0 : value);
@@ -37808,8 +37805,8 @@ var Engine = class {
       story_id: id2,
       phase: "authoring",
       settings,
-      turn_rule: `\u958B\u5834\u662F\u7B2C 1 \u56DE\u5408\uFF0C\u6240\u4EE5 target_turns=${settings.target_turns} \u4EE3\u8868\u73A9\u5BB6\u53EF\u884C\u52D5 ${settings.target_turns - 1} \u6B21\u3002`,
-      next_action: "\u4F9D\u73A9\u5BB6\u9700\u6C42\u751F\u6210\u5B8C\u6574\u5287\u672C\u5F8C\u547C\u53EB gmax_script_submit\u3002\u7BC0\u9EDE\u671F\u9650\u8207 target_end_turn \u90FD\u8981\u628A\u958B\u5834\u7B97\u9032\u53BB\u3002\u5287\u672C\u5167\u5BB9\u4E0D\u53EF\u51FA\u73FE\u5728\u7D66\u73A9\u5BB6\u7684\u6587\u5B57\u88E1\u3002"
+      turn_rule: `\u56DE\u5408\u6578\u53EA\u662F\u7BC0\u594F\u53C3\u8003\uFF0C\u4E0D\u662F\u9650\u5236\u3002\u958B\u5834\u7B97\u7B2C 1 \u56DE\u5408\uFF0C\u6240\u4EE5 target_turns=${settings.target_turns} \u7D04\u7B49\u65BC\u73A9\u5BB6\u884C\u52D5 ${settings.target_turns - 1} \u6B21\u3002`,
+      next_action: "\u4F9D\u73A9\u5BB6\u9700\u6C42\u751F\u6210\u5B8C\u6574\u5287\u672C\u5F8C\u547C\u53EB gmax_script_submit\u3002\u7BC0\u9EDE\u8207\u5E55\u7684\u53C3\u8003\u56DE\u5408\u90FD\u8981\u628A\u958B\u5834\u7B97\u9032\u53BB\u3002\u5287\u672C\u5167\u5BB9\u4E0D\u53EF\u51FA\u73FE\u5728\u7D66\u73A9\u5BB6\u7684\u6587\u5B57\u88E1\u3002"
     };
   }
   storyList() {
@@ -38128,7 +38125,7 @@ var Engine = class {
           degraded: cur.conservative,
           status_line: statusLine(st),
           final_text: text,
-          next_action: "\u628A final_text \u4E00\u5B57\u4E0D\u6539\u5730\u8F38\u51FA\u7D66\u73A9\u5BB6\uFF0C\u4E0D\u8981\u9644\u52A0\u5BE9\u67E5\u904E\u7A0B\u6216\u5287\u672C\u8CC7\u8A0A\u3002\u63A5\u8457\u7B49\u5F85\u73A9\u5BB6\u4E0B\u4E00\u6B65\u3002"
+          next_action: storyReadyToEnd(st) ? "\u628A final_text \u4E00\u5B57\u4E0D\u6539\u5730\u8F38\u51FA\u7D66\u73A9\u5BB6\uFF0C\u4E0D\u8981\u9644\u52A0\u5BE9\u67E5\u904E\u7A0B\u6216\u5287\u672C\u8CC7\u8A0A\u3002\u5FC5\u7D93\u7BC0\u9EDE\u8207\u652F\u7DDA\u90FD\u5DF2\u8655\u7406\uFF1A\u5982\u679C\u9019\u6BB5\u5DF2\u662F\u7D50\u5C40\uFF0C\u547C\u53EB gmax_story_end\uFF1B\u5426\u5247\u7B49\u5F85\u73A9\u5BB6\u4E0B\u4E00\u6B65\u3002" : "\u628A final_text \u4E00\u5B57\u4E0D\u6539\u5730\u8F38\u51FA\u7D66\u73A9\u5BB6\uFF0C\u4E0D\u8981\u9644\u52A0\u5BE9\u67E5\u904E\u7A0B\u6216\u5287\u672C\u8CC7\u8A0A\u3002\u63A5\u8457\u7B49\u5F85\u73A9\u5BB6\u4E0B\u4E00\u6B65\u3002"
         })
       };
     });

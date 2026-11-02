@@ -313,6 +313,12 @@ export function isFinalAct(s: StoryState): boolean {
   return !!act && act.id === s.script?.acts.at(-1)?.id;
 }
 
+/** 只看劇情進度，不看回合數。 */
+export function storyReadyToEnd(s: StoryState): boolean {
+  return !Object.values(s.beats).some(b => b.must_hit && b.status === 'pending')
+    && !Object.values(s.threads).some(t => t.status === 'open');
+}
+
 export function statusLine(s: StoryState): string {
   const turn = s.current?.number ?? s.turns.at(-1)?.number ?? 0;
   const budgets = Object.values(budgetsOf(s)).map(b => `${b.label} ${b.spent}/${b.limit}`);

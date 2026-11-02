@@ -6,7 +6,7 @@ import {
 } from './schema.js';
 import { GmaxError, type Store } from './store.js';
 import {
-  budgetsOf, currentAct, isFinalAct, statusLine,
+  budgetsOf, currentAct, isFinalAct, statusLine, storyReadyToEnd,
   type ReviewResult, type Role, type StoryEvent, type StoryState, type Ticket,
 } from './state.js';
 import { exportMarkdown, reviewPacket, scriptPacket, writerBrief } from './packets.js';
@@ -167,7 +167,7 @@ export function validateScript(script: Script, settings: Preferences) {
   }
   for (const b of script.beats) {
     if (b.must_hit && b.deadline_turn === 1) {
-      warnings.push(`節點 ${b.id} 的期限是第 1 回合，但第 1 回合是開場，玩家還沒行動。需要玩家行動的節點請把期限設在第 2 回合以後。`);
+      warnings.push(`節點 ${b.id} 的參考回合是第 1 回合，但第 1 回合是開場，玩家還沒行動。需要玩家行動的節點請排在第 2 回合以後。`);
     }
   }
   return { errors, warnings };
@@ -175,7 +175,6 @@ export function validateScript(script: Script, settings: Preferences) {
 
 export function checkDraft(s: StoryState, text: string, d: Declaration, conservative: boolean): string[] {
   const problems: string[] = [];
-  const cur = s.current!;
   const budgets = budgetsOf(s);
   const isPlayerFact = (id?: string) => !!id && s.facts[id]?.source === 'player';
   const spendCount = (budget: string) => d.spends.filter(x => x.budget === budget).length;
@@ -259,12 +258,6 @@ export function checkDraft(s: StoryState, text: string, d: Declaration, conserva
     problems.push('非玩家事實造成的修改或放棄必經節點，都必須申報 retcon。');
   }
 
-  const handled = new Set(d.beat_updates.map(b => b.beat));
-  for (const beat of Object.values(s.beats)) {
-    if (beat.must_hit && beat.status === 'pending' && beat.deadline_turn && beat.deadline_turn < cur.number && !handled.has(beat.id)) {
-      problems.push(`必經節點 ${beat.id}（${beat.title}）已逾期，本回合必須達成或調整。`);
-    }
-  }
   return problems;
 }
 
@@ -335,8 +328,8 @@ export class Engine {
     this.store.create(id, { type: 'story_created', id, title, settings, at: new Date().toISOString() });
     return {
       ok: true, story_id: id, phase: 'authoring', settings,
-      turn_rule: `開場是第 1 回合，所以 target_turns=${settings.target_turns} 代表玩家可行動 ${settings.target_turns - 1} 次。`,
-      next_action: '依玩家需求生成完整劇本後呼叫 gmax_script_submit。節點期限與 target_end_turn 都要把開場算進去。劇本內容不可出現在給玩家的文字裡。',
+      turn_rule: `回合數只是節奏參考，不是限制。開場算第 1 回合，所以 target_turns=${settings.target_turns} 約等於玩家行動 ${settings.target_turns - 1} 次。`,
+      next_action: '依玩家需求生成完整劇本後呼叫 gmax_script_submit。節點與幕的參考回合都要把開場算進去。劇本內容不可出現在給玩家的文字裡。',
     };
   }
 
@@ -668,7 +661,9 @@ export class Engine {
           ok: true, phase: 'idle', turn: st.turns.at(-1)!.number, degraded: cur.conservative,
           status_line: statusLine(st),
           final_text: text,
-          next_action: '把 final_text 一字不改地輸出給玩家，不要附加審查過程或劇本資訊。接著等待玩家下一步。',
+          next_action: storyReadyToEnd(st)
+            ? '把 final_text 一字不改地輸出給玩家，不要附加審查過程或劇本資訊。必經節點與支線都已處理：如果這段已是結局，呼叫 gmax_story_end；否則等待玩家下一步。'
+            : '把 final_text 一字不改地輸出給玩家，不要附加審查過程或劇本資訊。接著等待玩家下一步。',
         }),
       };
     });
