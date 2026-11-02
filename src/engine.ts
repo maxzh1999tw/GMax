@@ -265,7 +265,8 @@ export function checkDraft(s: StoryState, text: string, d: Declaration, conserva
 const comparableDeclaration = (d?: Declaration) =>
   JSON.stringify(d, (key, value) => (key === 'note' ? undefined : value));
 
-const WAIT_RULE = '子代理各自回報時不要查詢狀態；必須回應時只寫「主持人構思中…」，不要提進度。';
+const runReviewsRule = (statusTool: string) =>
+  `有 gmax_run_reviews 工具時，把 story_id 與 reviewers 傳給它，它回傳後呼叫 ${statusTool}。沒有時才在同一則訊息平行啟動 reviewers 列出的子代理，每個都帶上 model 與 effort，回報全部完成後呼叫 ${statusTool}；等待時必須回應只寫「主持人構思中…」。`;
 
 function requireStatus(s: StoryState, status: StoryState['status'], hint: string): void {
   if (s.status !== status) throw new GmaxError(`目前故事狀態是 ${s.status}，此操作需要 ${status}。`, hint);
@@ -411,7 +412,7 @@ export class Engine {
         reviewers: describeTickets(tickets),
         retained_passes: retained,
         next_action: tickets.length > 0
-          ? `在同一則訊息平行啟動 reviewers 列出的子代理，每個都要帶上 model 與 effort，提示詞只傳票證，不可包含劇本內容。${WAIT_RULE}回報全部完成後呼叫 gmax_script_review_status。`
+          ? `${runReviewsRule('gmax_script_review_status')}提示詞只傳票證，不可包含劇本內容。`
           : '不需要審查，呼叫 gmax_story_start。',
       }),
     };
@@ -560,7 +561,7 @@ export class Engine {
           retained_passes: retained,
           length: lengthReport(text, s.settings.length_per_turn),
           next_action: tickets.length > 0
-            ? `在同一則訊息平行啟動 reviewers 列出的子代理，每個都要帶上 model 與 effort，提示詞只傳票證。${WAIT_RULE}回報全部完成後呼叫 gmax_review_status。`
+            ? `${runReviewsRule('gmax_review_status')}提示詞只傳票證。`
             : '不需要審查，直接呼叫 gmax_turn_commit。',
         }),
       };

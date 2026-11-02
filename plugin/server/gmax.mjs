@@ -37748,7 +37748,7 @@ function checkDraft(s, text, d, conservative) {
   return problems;
 }
 var comparableDeclaration = (d) => JSON.stringify(d, (key, value) => key === "note" ? void 0 : value);
-var WAIT_RULE = "\u5B50\u4EE3\u7406\u5404\u81EA\u56DE\u5831\u6642\u4E0D\u8981\u67E5\u8A62\u72C0\u614B\uFF1B\u5FC5\u9808\u56DE\u61C9\u6642\u53EA\u5BEB\u300C\u4E3B\u6301\u4EBA\u69CB\u601D\u4E2D\u2026\u300D\uFF0C\u4E0D\u8981\u63D0\u9032\u5EA6\u3002";
+var runReviewsRule = (statusTool) => `\u6709 gmax_run_reviews \u5DE5\u5177\u6642\uFF0C\u628A story_id \u8207 reviewers \u50B3\u7D66\u5B83\uFF0C\u5B83\u56DE\u50B3\u5F8C\u547C\u53EB ${statusTool}\u3002\u6C92\u6709\u6642\u624D\u5728\u540C\u4E00\u5247\u8A0A\u606F\u5E73\u884C\u555F\u52D5 reviewers \u5217\u51FA\u7684\u5B50\u4EE3\u7406\uFF0C\u6BCF\u500B\u90FD\u5E36\u4E0A model \u8207 effort\uFF0C\u56DE\u5831\u5168\u90E8\u5B8C\u6210\u5F8C\u547C\u53EB ${statusTool}\uFF1B\u7B49\u5F85\u6642\u5FC5\u9808\u56DE\u61C9\u53EA\u5BEB\u300C\u4E3B\u6301\u4EBA\u69CB\u601D\u4E2D\u2026\u300D\u3002`;
 function requireStatus(s, status, hint) {
   if (s.status !== status) throw new GmaxError(`\u76EE\u524D\u6545\u4E8B\u72C0\u614B\u662F ${s.status}\uFF0C\u6B64\u64CD\u4F5C\u9700\u8981 ${status}\u3002`, hint);
 }
@@ -37886,7 +37886,7 @@ var Engine = class {
         round,
         reviewers: describeTickets(tickets),
         retained_passes: retained,
-        next_action: tickets.length > 0 ? `\u5728\u540C\u4E00\u5247\u8A0A\u606F\u5E73\u884C\u555F\u52D5 reviewers \u5217\u51FA\u7684\u5B50\u4EE3\u7406\uFF0C\u6BCF\u500B\u90FD\u8981\u5E36\u4E0A model \u8207 effort\uFF0C\u63D0\u793A\u8A5E\u53EA\u50B3\u7968\u8B49\uFF0C\u4E0D\u53EF\u5305\u542B\u5287\u672C\u5167\u5BB9\u3002${WAIT_RULE}\u56DE\u5831\u5168\u90E8\u5B8C\u6210\u5F8C\u547C\u53EB gmax_script_review_status\u3002` : "\u4E0D\u9700\u8981\u5BE9\u67E5\uFF0C\u547C\u53EB gmax_story_start\u3002"
+        next_action: tickets.length > 0 ? `${runReviewsRule("gmax_script_review_status")}\u63D0\u793A\u8A5E\u53EA\u50B3\u7968\u8B49\uFF0C\u4E0D\u53EF\u5305\u542B\u5287\u672C\u5167\u5BB9\u3002` : "\u4E0D\u9700\u8981\u5BE9\u67E5\uFF0C\u547C\u53EB gmax_story_start\u3002"
       })
     };
   }
@@ -38027,7 +38027,7 @@ var Engine = class {
           reviewers: describeTickets(tickets),
           retained_passes: retained,
           length: lengthReport(text, s.settings.length_per_turn),
-          next_action: tickets.length > 0 ? `\u5728\u540C\u4E00\u5247\u8A0A\u606F\u5E73\u884C\u555F\u52D5 reviewers \u5217\u51FA\u7684\u5B50\u4EE3\u7406\uFF0C\u6BCF\u500B\u90FD\u8981\u5E36\u4E0A model \u8207 effort\uFF0C\u63D0\u793A\u8A5E\u53EA\u50B3\u7968\u8B49\u3002${WAIT_RULE}\u56DE\u5831\u5168\u90E8\u5B8C\u6210\u5F8C\u547C\u53EB gmax_review_status\u3002` : "\u4E0D\u9700\u8981\u5BE9\u67E5\uFF0C\u76F4\u63A5\u547C\u53EB gmax_turn_commit\u3002"
+          next_action: tickets.length > 0 ? `${runReviewsRule("gmax_review_status")}\u63D0\u793A\u8A5E\u53EA\u50B3\u7968\u8B49\u3002` : "\u4E0D\u9700\u8981\u5BE9\u67E5\uFF0C\u76F4\u63A5\u547C\u53EB gmax_turn_commit\u3002"
         })
       };
     });

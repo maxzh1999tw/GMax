@@ -18,7 +18,7 @@
   | 參數與收束 | Sonnet／medium（也審劇本走向） | 參數填得對不對、故事有沒有在收束 |
   | 登記 | Haiku／low | 新事實與揭露有沒有漏記 |
 
-  每張票證都會列出 `model` 與 `effort`，主持人照著傳。這張對照表在 `src/engine.ts` 的 `REVIEWERS`，子代理 frontmatter 的預設值在 `scripts/agents.mjs`。
+  每張票證都會列出 `model` 與 `effort`。Claude Code 由 Mod 的 `gmax_run_reviews` 平行執行審查（思考程度取自子代理設定，因為 Mod 無法逐次指定），沒有 Mod 時主持人自己照著開子代理。這張對照表在 `src/engine.ts` 的 `REVIEWERS`，子代理 frontmatter 的預設值在 `scripts/agents.mjs`。
 
   文風不是退稿理由。退稿最多修改 3 次（可調），之後只能交出不新增內容的保守版，並記錄為降級回合。
 - **劇本審查會收斂**：退稿後用 `gmax_script_patch` 只改有問題的部分。已通過的審查者不重審（除非改動超過三成），重審者只看舊問題與改動處。修改上限到了之後，修改會直接套用，不再送審。

@@ -93,6 +93,28 @@ test('流程中的子代理回報不顯示，玩家自己的輸入照常顯示',
   await player.unmount()
 })
 
+test('Mod 依票證派出審查子代理；沒有成功啟動就回報失敗', async ($, on) => {
+  const spawned: { subagent_type?: string; model?: string; prompt: string; description?: string }[] = []
+  // 測試環境沒有 core，hook 回答的 spawn 不帶 agentId，所以這裡走的是啟動失敗路徑
+  on('agent.spawn', ($, e) => {
+    spawned.push(e as never)
+    return { model: 'm' }
+  })
+  const reply = await ($.tool.call({
+    tool: 'mcp__gmax__gmax_run_reviews',
+    input: {
+      story_id: 's1',
+      reviewers: [
+        { ticket: 'T-1', agent: 'gmax-logic-reviewer', model: 'opus' },
+        { ticket: 'T-2', agent: 'gmax-registry-reviewer', model: 'haiku' },
+      ],
+    },
+  } as never) as Promise<{ text: string }>)
+  expect(spawned.map(s => s.subagent_type)).toEqual(['gmax:gmax-logic-reviewer', 'gmax:gmax-registry-reviewer'])
+  expect(spawned[0]).toMatchObject({ model: 'opus', prompt: 'story_id=s1 ticket=T-1', description: 'GMax 審稿' })
+  expect(reply.text).toContain('2 個審查子代理沒有正常結束')
+})
+
 test('審查還在跑時不提醒，全部回報後才提醒', async ($, on) => {
   let reply = {}
   on('tool.call', () => ({ result: {}, text: JSON.stringify(reply) }))

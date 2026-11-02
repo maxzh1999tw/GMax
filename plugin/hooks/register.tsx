@@ -3,6 +3,11 @@ import type { Register } from 'claude-code'
 
 const GMAX_TOOL = /^mcp__.*gmax.*__gmax_([a-z_]+)$/
 const GMAX_AGENT = /gmax-[a-z]+-reviewer$/
+const RUN_REVIEWS = 'mcp__gmax__gmax_run_reviews'
+const REVIEWER_LIMIT = 8
+const REVIEW_TIMEOUT_MS = 10 * 60 * 1000
+
+type Reviewer = { ticket: string; agent: string; model?: string }
 
 const LABELS: Record<string, string> = {
   preferences_get: '讀取玩家設定',
@@ -24,6 +29,7 @@ const LABELS: Record<string, string> = {
   turn_rewind: '回到先前的回合',
   review_packet: '領取審查資料',
   review_submit: '提交審查',
+  run_reviews: '審稿中',
   story_end: '結束故事',
   story_export: '匯出故事',
 }
@@ -68,11 +74,69 @@ export const register: Register = on => {
   let lastMasked: string | undefined
   const decided = new Map<string, boolean>()
   const hiddenRows = new Map<string, boolean>()
+  const waiting = new Map<string, (ok: boolean) => void>()
 
   // 權限對話框會顯示完整的工具參數（包含草稿與劇本），所以只放行 GMax 自己的工具
   on('classic.PermissionRequest', ($, e, next) =>
     GMAX_TOOL.test(e.tool_name) ? { decision: { behavior: 'allow' } } : next(e),
   ).catch((($, e, next) => next(e)))
+
+  on('session.start', ($, e, next) =>
+    $.tool
+      .register({
+        name: 'gmax_run_reviews',
+        description: '執行 GMax 回傳的 reviewers：平行跑完所有審查子代理才回傳。可用時一律用它，不要自己啟動審查子代理。',
+        isDeferred: false,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            story_id: { type: 'string' },
+            reviewers: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: { ticket: { type: 'string' }, agent: { type: 'string' }, model: { type: 'string' } },
+                required: ['ticket', 'agent'],
+              },
+            },
+          },
+          required: ['story_id', 'reviewers'],
+        },
+      })
+      .then(() => next(e)),
+  )
+
+  // 由 Mod 派出並等待，主持人就不會收到逐一的子代理回報，對話裡也不會留下訊息列
+  on('tool.call', { tool: RUN_REVIEWS }, async ($, e) => {
+    const { story_id: storyId, reviewers } = e.input as { story_id: string; reviewers: Reviewer[] }
+    const results = await Promise.all(
+      reviewers.slice(0, REVIEWER_LIMIT).map(async r => {
+        try {
+          const started = await $.agent.spawn({
+            subagentType: `gmax:${r.agent}`,
+            model: r.model,
+            description: 'GMax 審稿',
+            prompt: `story_id=${storyId} ticket=${r.ticket}`,
+          })
+          const id = started.agentId
+          if (!id) return false
+          return await new Promise<boolean>(resolve => {
+            waiting.set(id, resolve)
+            // 子代理沒有結束的訊號時不能讓主持人永遠等下去
+            $.clock.after(REVIEW_TIMEOUT_MS, () => resolve(false))
+          })
+        } catch {
+          return false
+        }
+      }),
+    )
+    reviewsRunning = 0
+    const failed = results.filter(ok => !ok).length
+    const text = failed > 0
+      ? `有 ${failed} 個審查子代理沒有正常結束。查詢審查狀態，對 pending 列出的票證再呼叫一次 gmax_run_reviews。`
+      : '審查子代理都已結束。查詢審查狀態後繼續。'
+    return { result: { text }, text }
+  })
 
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
@@ -133,7 +197,11 @@ export const register: Register = on => {
   })
 
   on('turn.complete', async ($, e, next) => {
-    if (e.agentId !== undefined) return next(e)
+    if (e.agentId !== undefined) {
+      waiting.get(e.agentId)?.(e.reason === 'answer')
+      waiting.delete(e.agentId)
+      return next(e)
+    }
     // 審查還在跑時，這一輪的文字只是等待，不算給玩家的話
     if (lastMasked && reviewsRunning === 0) {
       const id = lastMasked

@@ -31,7 +31,7 @@ description: 使用者想玩文字冒險、互動小說、文字 RPG、角色扮
    - 祕密要有足夠的線索，每條支線都要有收束點，每個結局都要能抵達。
    - 通常 3～4 幕；依玩家要的長度估計 `target_end_turn` 與 `deadline_turn`，它們只是節奏參考。
    - **開場算第 1 回合**，玩家還沒行動。玩家說「三回合」是指能行動三次，所以 `target_turns` 大約設 4，需要玩家行動的節點排在第 2 回合以後。
-4. 依回傳的 `reviewers` 啟動審查，等回報全部完成再呼叫 `gmax_script_review_status`。退稿就用 `gmax_script_patch` 只改有問題的部分，不要重傳整份劇本。修改上限到了之後，`gmax_script_patch` 仍可修正但不再送審，修完後帶 `accept_issues: true` 呼叫 `gmax_story_start`。
+4. 依回傳的 `reviewers` 執行審查（見回合流程第 3 步），結束後呼叫 `gmax_script_review_status`。退稿就用 `gmax_script_patch` 只改有問題的部分，不要重傳整份劇本。修改上限到了之後，`gmax_script_patch` 仍可修正但不再送審，修完後帶 `accept_issues: true` 呼叫 `gmax_story_start`。
 5. `gmax_story_start` 後，告訴玩家準備好了，然後走回合流程寫出開場。
 
 ## 回合流程
@@ -40,8 +40,9 @@ description: 使用者想玩文字冒險、互動小說、文字 RPG、角色扮
 
 1. **`gmax_turn_begin`**：傳入玩家原話。玩家宣告的設定（「我其實有鑰匙」「這扇門沒鎖」）列入 `player_facts`。
 2. **寫草稿**，呼叫 **`gmax_draft_submit`** 附上宣告。程式檢查失敗就依 `problems` 修正。
-3. **平行審查**：在同一則訊息裡，依 `reviewers` 為每張票證各開一個子代理。Claude Code 的 `subagent_type` 是 `gmax:<agent>`（例如 `gmax:gmax-logic-reviewer`），並且**一定要照 `reviewers` 傳 `model` 與 `effort`**，同一個子代理在不同階段會用不同的模型。Codex 的模型與推理強度由子代理設定決定，不用傳。`description` 一律寫「GMax 審稿」，不要提到劇情。提示詞固定為：`story_id=<id> ticket=<ticket>`。
-4. **`gmax_review_status`**：子代理回報「本輪審查全部完成」才呼叫，在那之前不用查。有退稿就修改並重新提交，回到第 3 步。
+3. **審查**：有 `gmax_run_reviews` 工具時（Claude Code 的 Mod 提供），把 `story_id` 和 `reviewers` 傳給它，它會平行跑完才回傳，這時不用自己開子代理，回傳後直接進第 4 步。
+   沒有這個工具才自己開：在同一則訊息裡，依 `reviewers` 為每張票證各開一個子代理。Claude Code 的 `subagent_type` 是 `gmax:<agent>`（例如 `gmax:gmax-logic-reviewer`），並且**一定要照 `reviewers` 傳 `model` 與 `effort`**，同一個子代理在不同階段會用不同的模型。Codex 的模型與推理強度由子代理設定決定，不用傳。`description` 一律寫「GMax 審稿」，不要提到劇情。提示詞固定為：`story_id=<id> ticket=<ticket>`。
+4. **`gmax_review_status`**：`gmax_run_reviews` 回傳，或子代理回報「本輪審查全部完成」才呼叫，在那之前不用查。有退稿就修改並重新提交，回到第 3 步。
 5. **`gmax_turn_commit`**：把回傳的 `final_text` 一字不改地輸出，這是本回合唯一給玩家看的文字。
 
 子代理或工具失敗時重試一次；還是失敗就重新啟動該票證的審查，不要跳過審查直接輸出。子代理數量達到上限時，先關閉已完成的子代理，或等它們結束再開。
