@@ -30,6 +30,8 @@ const LABELS: Record<string, string> = {
 
 const ACTIVE_PHASES = ['authoring', 'writing', 'reviewing']
 const UNFINISHED_PHASES = ['writing', 'reviewing']
+const WAITING_TEXT = /^\s*主持人構思中/
+const FLOW_TEXT = /^\s*\[GMax 提醒\]|已提交(，還有 \d+ 項審查未完成|，本輪審查全部完成)/
 
 const revealed = atom({ plugin: 'gmax', key: 'revealed' } as const, [] as string[])
 
@@ -65,6 +67,7 @@ export const register: Register = on => {
   let reviewsRunning = 0
   let lastMasked: string | undefined
   const decided = new Map<string, boolean>()
+  const hiddenRows = new Map<string, boolean>()
 
   // 權限對話框會顯示完整的工具參數（包含草稿與劇本），所以只放行 GMax 自己的工具
   on('classic.PermissionRequest', ($, e, next) =>
@@ -82,7 +85,8 @@ export const register: Register = on => {
     if (reply.phase) phase = reply.phase
     if (reply.reviewers) reviewsRunning = reply.reviewers.length
     else if (reply.pending) reviewsRunning = reply.pending.length
-    if (reply.status_line) $.ui.status(reply.status_line)
+    // 只顯示回合數：參數消耗會讓玩家猜出哪段是誤導或反轉
+    if (reply.status_line) $.ui.status(reply.status_line.split('｜')[0])
     return ran
   }).catch((($, e, next) => next(e)))
 
@@ -102,6 +106,8 @@ export const register: Register = on => {
 
   // 流程進行中的文字可能帶到劇情，先遮住；每回合的最後一段是給玩家的話，一律顯示
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
+    const { Box } = $.ui.resolve(e)
+    if (WAITING_TEXT.test(e.props.text)) return <Box />
     if ((await read($, revealed)).includes(e.requestId)) return next(e)
     let masked = decided.get(e.requestId)
     if (masked === undefined) {
@@ -110,8 +116,20 @@ export const register: Register = on => {
     }
     if (!masked) return next(e)
     lastMasked = e.requestId
-    const { Text } = $.ui.resolve(e)
-    return <Text dimColor>GMax：主持人思考中…</Text>
+    return <Box />
+  })
+
+  // 子代理的回報與背景工作通知只是流程雜訊，玩家不用看到
+  on('ui.render', { component: 'UserMessage' }, ($, e, next) => {
+    const flowRow = (e.props.task !== undefined || e.props.from !== undefined) && ACTIVE_PHASES.includes(phase)
+    let hidden = hiddenRows.get(e.requestId)
+    if (hidden === undefined) {
+      hidden = FLOW_TEXT.test(e.props.text) || flowRow
+      hiddenRows.set(e.requestId, hidden)
+    }
+    if (!hidden) return next(e)
+    const { Box } = $.ui.resolve(e)
+    return <Box />
   })
 
   on('turn.complete', async ($, e, next) => {

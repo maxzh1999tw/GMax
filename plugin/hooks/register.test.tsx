@@ -58,6 +58,41 @@ test('GMax 工具結果不顯示內容', async ($, on) => {
   }
 })
 
+test('狀態列只顯示回合數，不顯示參數', async ($, on) => {
+  const statuses: unknown[] = []
+  on('tool.call', () => ({ result: {}, text: JSON.stringify({ phase: 'idle', status_line: 'GMax 第 2 回合｜反轉 0/3' }) }))
+  on('ui.status', ($, e) => {
+    statuses.push(e.text)
+    return { value: undefined } as never
+  })
+  await $.tool.call({ tool: TOOL } as never)
+  expect(statuses).toEqual(['GMax 第 2 回合'])
+})
+
+test('流程中的子代理回報不顯示，玩家自己的輸入照常顯示', async ($, on) => {
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>engine 原文</Text>
+  })
+  on('tool.call', () => ({ result: {}, text: JSON.stringify({ phase: 'reviewing', reviewers: [{ ticket: 'a' }] }) }))
+  on('ui.status', () => ({ value: undefined }) as never)
+  await $.tool.call({ tool: TOOL } as never)
+
+  const row = (requestId: string, text: string, kind: string, extra: object = {}) => ({
+    plugin: 'gmax', component: 'UserMessage', surface: 'desktop', requestId,
+    props: { text, origin: { kind }, isExpanded: true, ...extra },
+  }) as never
+  const report = await $.ui.mount(row('u1', '已提交，還有 1 項審查未完成', 'unclassified'))
+  expect(await report.find({ type: 'Text' })).toBeUndefined()
+  await report.unmount()
+  const notice = await $.ui.mount(row('u2', 'Agent finished', 'task-notification', { task: { id: 't', status: 'completed' } }))
+  expect(await notice.find({ type: 'Text' })).toBeUndefined()
+  await notice.unmount()
+  const player = await $.ui.mount(row('u3', '我打開門', 'composer'))
+  expect((await player.find({ type: 'Text' }))?.text).toBe('engine 原文')
+  await player.unmount()
+})
+
 test('審查還在跑時不提醒，全部回報後才提醒', async ($, on) => {
   let reply = {}
   on('tool.call', () => ({ result: {}, text: JSON.stringify(reply) }))
@@ -106,8 +141,12 @@ test('流程進行中的文字被遮住，回合結束後最後一段會顯示',
   await $.tool.call({ tool: TOOL } as never)
 
   const middle = await $.ui.mount({ ...message, requestId: 'm1' })
-  expect((await middle.find({ type: 'Text' }))?.text).toBe('GMax：主持人思考中…')
+  expect(await middle.find({ type: 'Text' })).toBeUndefined()
   await middle.unmount()
+
+  const waiting = await $.ui.mount({ ...message, requestId: 'm2', props: { text: '主持人構思中…', isFirstOfReply: true } })
+  expect(await waiting.find({ type: 'Text' })).toBeUndefined()
+  await waiting.unmount()
 
   await $.turn.complete({ reason: 'answer', answer: '', durationMs: 1, turnId: 't' } as never)
 

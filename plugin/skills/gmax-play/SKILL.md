@@ -40,7 +40,7 @@ description: 使用者想玩文字冒險、互動小說、文字 RPG、角色扮
 
 1. **`gmax_turn_begin`**：傳入玩家原話。玩家宣告的設定（「我其實有鑰匙」「這扇門沒鎖」）列入 `player_facts`。
 2. **寫草稿**，呼叫 **`gmax_draft_submit`** 附上宣告。程式檢查失敗就依 `problems` 修正。
-3. **平行審查**：在同一則訊息裡，依 `reviewers` 為每張票證各開一個子代理。Claude Code 的 `subagent_type` 是 `gmax:<agent>`（例如 `gmax:gmax-logic-reviewer`），並且**一定要照 `reviewers` 傳 `model` 與 `effort`**，同一個子代理在不同階段會用不同的模型。Codex 的模型與推理強度由子代理設定決定，不用傳。提示詞固定為：`story_id=<id> ticket=<ticket>`。
+3. **平行審查**：在同一則訊息裡，依 `reviewers` 為每張票證各開一個子代理。Claude Code 的 `subagent_type` 是 `gmax:<agent>`（例如 `gmax:gmax-logic-reviewer`），並且**一定要照 `reviewers` 傳 `model` 與 `effort`**，同一個子代理在不同階段會用不同的模型。Codex 的模型與推理強度由子代理設定決定，不用傳。`description` 一律寫「GMax 審稿」，不要提到劇情。提示詞固定為：`story_id=<id> ticket=<ticket>`。
 4. **`gmax_review_status`**：子代理回報「本輪審查全部完成」才呼叫，在那之前不用查。有退稿就修改並重新提交，回到第 3 步。
 5. **`gmax_turn_commit`**：把回傳的 `final_text` 一字不改地輸出，這是本回合唯一給玩家看的文字。
 
