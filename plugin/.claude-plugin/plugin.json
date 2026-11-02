@@ -1,0 +1,9 @@
+{
+    "name":  "gmax",
+    "version":  "0.1.0",
+    "description":  "文字互動小說輔助：外部化劇本、消耗性參數、多代理審稿與防雷遮罩",
+    "types":  "./types/index.d.ts",
+    "author":  {
+                   "name":  "GMax"
+               }
+}

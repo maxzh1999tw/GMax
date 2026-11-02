@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "gmax": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/gmax.mjs"]
+    }
+  }
+}

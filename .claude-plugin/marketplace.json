@@ -1,0 +1,11 @@
+{
+  "name": "gmax",
+  "owner": { "name": "GMax" },
+  "plugins": [
+    {
+      "name": "gmax",
+      "source": "./plugin",
+      "description": "文字互動小說輔助：外部化劇本、消耗性參數、多代理審稿與防雷遮罩"
+    }
+  ]
+}

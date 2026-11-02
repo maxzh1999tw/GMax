@@ -1,0 +1,27 @@
+{
+  "name": "gmax",
+  "version": "0.1.0",
+  "description": "文字互動小說的本地 MCP：外部化劇本、消耗性參數與多代理審稿",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run build && npm test",
+    "install:codex": "node scripts/install-codex.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
