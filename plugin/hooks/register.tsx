@@ -31,11 +31,6 @@ const LABELS: Record<string, string> = {
 const ACTIVE_PHASES = ['authoring', 'writing', 'reviewing']
 const UNFINISHED_PHASES = ['writing', 'reviewing']
 const WAITING_TEXT = /^\s*(GMax：)?主持人(構思|思考)中/
-const AGENT_ID = /agentId:\s*([\w-]+)/
-const REVIEW_PENDING = /已提交，還有 \d+ 項審查未完成/
-const REVIEW_DONE = /已提交，本輪審查全部完成/
-const TASK_COMPLETED = /<status>completed<\/status>/
-const REVIEWS_FINISHED = '[GMax 提醒] 本輪審查全部完成，請查詢審查結果後繼續。'
 const FLOW_TEXT = /^\s*\[GMax 提醒\]|已提交(，還有 \d+ 項審查未完成|，本輪審查全部完成)/
 
 const revealed = atom({ plugin: 'gmax', key: 'revealed' } as const, [] as string[])
@@ -73,36 +68,14 @@ export const register: Register = on => {
   let lastMasked: string | undefined
   const decided = new Map<string, boolean>()
   const hiddenRows = new Map<string, boolean>()
-  const reviewAgents = new Set<string>()
 
   // 權限對話框會顯示完整的工具參數（包含草稿與劇本），所以只放行 GMax 自己的工具
   on('classic.PermissionRequest', ($, e, next) =>
     GMAX_TOOL.test(e.tool_name) ? { decision: { behavior: 'allow' } } : next(e),
   ).catch((($, e, next) => next(e)))
 
-  // 審查回報一進對話就會留下一列訊息並喚醒主持人，所以在進入前攔下，全部完成才通知一次。
-  // 認不出來的訊息（例如子代理失敗）照常送達，流程才不會卡住。
-  on('prompt.submit', ($, e, next) => {
-    const kind = (e as { origin?: { kind?: string } }).origin?.kind
-    if (kind === undefined || kind === 'composer') return next(e)
-    if (REVIEW_PENDING.test(e.text)) return { drop: 'GMax' }
-    if (REVIEW_DONE.test(e.text)) {
-      void $.prompt.submit({ text: REVIEWS_FINISHED })
-      return { drop: 'GMax' }
-    }
-    const finished = kind === 'task-notification' && TASK_COMPLETED.test(e.text)
-    if (finished && [...reviewAgents].some(id => e.text.includes(id))) return { drop: 'GMax' }
-    return next(e)
-  })
-
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
-    if (String(e.tool) === 'Agent' || String(e.tool) === 'Task') {
-      const type = (e.input as { subagent_type?: unknown } | null)?.subagent_type
-      const id = AGENT_ID.exec(ran.text ?? '')?.[1]
-      if (id && typeof type === 'string' && GMAX_AGENT.test(type)) reviewAgents.add(id)
-      return ran
-    }
     if (!GMAX_TOOL.test(String(e.tool))) return ran
     const reply = parseReply(ran.text)
     if (e.agentId !== undefined) {

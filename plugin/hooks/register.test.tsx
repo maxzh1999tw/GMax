@@ -93,21 +93,6 @@ test('流程中的子代理回報不顯示，玩家自己的輸入照常顯示',
   await player.unmount()
 })
 
-test('審查回報被攔下，全部完成才通知一次，其他訊息照常送達', async ($, on) => {
-  const bottom = ($: unknown, e: { text: string }) => ({ text: e.text })
-  on('prompt.submit', bottom as never)
-  on('tool.call', () => ({ result: {}, text: 'agentId: abc123 launched' }))
-  await $.tool.call({ tool: 'Agent', input: { subagent_type: 'gmax:gmax-logic-reviewer' } } as never)
-
-  const send = (text: string, kind: string) => $.prompt.submit({ text, origin: { kind } } as never) as Promise<{ drop?: string; text?: string }>
-  expect((await send('已提交，還有 2 項審查未完成', 'peer')).drop).toBeDefined()
-  expect((await send('<task-id>abc123</task-id><status>completed</status>', 'task-notification')).drop).toBeDefined()
-  expect((await send('子代理失敗了', 'peer')).drop).toBeUndefined()
-  expect((await send('<task-id>abc123</task-id><status>failed</status>', 'task-notification')).drop).toBeUndefined()
-  expect((await send('<task-id>other</task-id><status>completed</status>', 'task-notification')).drop).toBeUndefined()
-  expect((await send('已提交，還有 2 項審查未完成', 'composer')).drop).toBeUndefined()
-})
-
 test('審查還在跑時不提醒，全部回報後才提醒', async ($, on) => {
   let reply = {}
   on('tool.call', () => ({ result: {}, text: JSON.stringify(reply) }))
