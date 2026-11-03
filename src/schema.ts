@@ -17,7 +17,7 @@ export const DEFAULT_BUDGETS: Record<string, Budget> = {
   },
   info_patch: {
     label: '補充資訊',
-    definition: '劇本未登記、由 AI 自行發想，會影響解讀或後續情節的新資訊。無害細節不算。',
+    definition: '劇本未登記、由 AI 自行發想，會影響解讀或後續情節的新資訊。無害細節不算；為了實現玩家要求的內容（例如玩家要求加入謎題，謎題的具體設計）也不算。',
     limit: 6,
   },
   misdirection: {
