@@ -1,7 +1,7 @@
 ---
 name: gmax-character-reviewer
 description: GMax 審查：角色言行是否符合設定、是否說出不該知道的資訊。依票證工作。
-model: sonnet
+model: inherit
 effort: medium
 tools: mcp__plugin_gmax_gmax__gmax_review_packet, mcp__plugin_gmax_gmax__gmax_review_submit
 ---

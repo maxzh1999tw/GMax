@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { AGENTS } from '../scripts/agents.mjs';
-import { changeRatio, REVIEWERS } from '../src/engine.js';
+import { changeRatio, hostOf, REVIEWERS } from '../src/engine.js';
 import { activeStory, newEngine, passAll, playTurn, script } from './fixtures.js';
 
-type Sub = { ok: boolean; problems: string[]; errors: string[]; reviewers: { ticket: string; role: string; agent: string; model: string; effort: string }[]; retained_passes: string[]; warnings: string[]; next_action: string; length: { chars: number; warning?: string } };
+type Sub = { ok: boolean; problems: string[]; errors: string[]; reviewers: { ticket: string; role: string; agent: string; tier: string; model: string; effort: string }[]; retained_passes: string[]; warnings: string[]; next_action: string; length: { chars: number; warning?: string } };
 
 describe('劇本', () => {
   it('結構錯誤會擋下，不發票證', () => {
@@ -43,12 +43,26 @@ describe('劇本', () => {
     const e = newEngine();
     const { story_id: id } = e.storyCreate('t');
     const r = e.scriptSubmit(id, script()) as unknown as Sub;
-    expect(r.reviewers.find(x => x.role === 'script_logic')).toMatchObject({ model: 'opus', effort: 'high' });
-    expect(r.reviewers.find(x => x.role === 'script_drama')).toMatchObject({ model: 'sonnet', effort: 'medium' });
+    expect(r.reviewers.find(x => x.role === 'script_logic')).toMatchObject({ tier: 'main', model: 'inherit', effort: 'high' });
+    expect(r.reviewers.find(x => x.role === 'script_drama')).toMatchObject({ tier: 'mid', model: 'sonnet', effort: 'medium' });
+    expect(r.next_action).toContain('haiku < sonnet < opus');
     for (const role of ['logic', 'ledger', 'character', 'registry'] as const) {
-      const { agent, model, effort } = REVIEWERS[role];
-      expect(AGENTS.find(a => a.name === agent)).toMatchObject({ model, effort });
+      const { agent, effort } = REVIEWERS[role];
+      expect(AGENTS.find(a => a.name === agent)).toMatchObject({ effort });
     }
+  });
+
+  it('Codex 改派 Codex 的模型名稱', () => {
+    expect(hostOf('codex-mcp-client')).toBe('codex');
+    expect(hostOf('claude-code')).toBe('claude');
+    expect(hostOf(undefined)).toBe('claude');
+    const e = newEngine();
+    e.host = 'codex';
+    const { story_id: id } = e.storyCreate('t');
+    const r = e.scriptSubmit(id, script()) as unknown as Sub;
+    expect(r.reviewers.find(x => x.role === 'script_logic')).toMatchObject({ model: 'inherit' });
+    expect(r.reviewers.find(x => x.role === 'script_drama')).toMatchObject({ model: 'gpt-6.1-sol' });
+    expect(r.next_action).toContain('gpt-6-luna <');
   });
 
   it('局部修改只重審被否決者，重審資料只含舊問題與改動處', () => {

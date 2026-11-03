@@ -1,7 +1,7 @@
 ---
 name: gmax-logic-reviewer
 description: GMax 審查：情節、事實、因果與時間線是否自洽，也審查劇本結構。依票證工作。
-model: sonnet
+model: inherit
 effort: high
 tools: mcp__plugin_gmax_gmax__gmax_review_packet, mcp__plugin_gmax_gmax__gmax_review_submit
 ---

@@ -17,6 +17,17 @@ issues 的欄位依 submit_format。沒有問題就 verdict=pass，文風意見�
 
 type Reviewer = { ticket: string; agent: string; model?: string; effort?: string }
 
+// 由低到高，和 src/engine.ts 的 MODELS.claude.order 一致
+const MODEL_ORDER = ['haiku', 'sonnet', 'opus']
+const rankOf = (model: string) => MODEL_ORDER.findIndex(family => model.toLowerCase().includes(family))
+
+/** 主對話的模型是上限：inherit 或比它高階的都改用主對話的模型。認不出的主模型（例如 fable）視為最高階。 */
+function reviewModel(main: string, requested: string | undefined): string {
+  if (!requested || requested === 'inherit') return main
+  const top = rankOf(main)
+  return top >= 0 && rankOf(requested) > top ? main : requested
+}
+
 const LABELS: Record<string, string> = {
   preferences_get: '讀取玩家設定',
   preferences_update: '更新玩家設定',
@@ -64,10 +75,11 @@ function parseVerdict(text: string): { verdict: string; issues?: unknown[]; note
 async function reviewOne($: Parameters<Hook<'tool.call'>>[0], storyId: string, r: Reviewer): Promise<boolean> {
   const packet = await $.tool.call({ tool: REVIEW_PACKET, story_id: storyId, ticket: r.ticket })
   if (packet.isError) return false
+  const model = reviewModel(await $.session.model(), r.model)
   let feedback = ''
   for (let attempt = 0; attempt < REVIEW_ATTEMPTS; attempt++) {
     const answer = await $.model.complete({
-      model: r.model ?? 'sonnet',
+      model,
       effort: r.effort,
       system: REVIEW_SYSTEM,
       prompt: packet.text + feedback,

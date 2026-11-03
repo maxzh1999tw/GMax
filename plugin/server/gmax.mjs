@@ -37534,19 +37534,32 @@ function exportMarkdown(s, includeScript) {
 // src/engine.ts
 var MAJOR_CHANGE_RATIO = 0.3;
 var REVIEWERS = {
-  script_logic: { agent: "gmax-logic-reviewer", model: "opus", effort: "high" },
-  logic: { agent: "gmax-logic-reviewer", model: "sonnet", effort: "high" },
-  script_drama: { agent: "gmax-ledger-reviewer", model: "sonnet", effort: "medium" },
-  ledger: { agent: "gmax-ledger-reviewer", model: "sonnet", effort: "medium" },
-  character: { agent: "gmax-character-reviewer", model: "sonnet", effort: "medium" },
-  registry: { agent: "gmax-registry-reviewer", model: "haiku", effort: "low" }
+  script_logic: { agent: "gmax-logic-reviewer", tier: "main", effort: "high" },
+  logic: { agent: "gmax-logic-reviewer", tier: "mid", effort: "high" },
+  script_drama: { agent: "gmax-ledger-reviewer", tier: "mid", effort: "medium" },
+  ledger: { agent: "gmax-ledger-reviewer", tier: "mid", effort: "medium" },
+  character: { agent: "gmax-character-reviewer", tier: "mid", effort: "medium" },
+  registry: { agent: "gmax-registry-reviewer", tier: "low", effort: "low" }
 };
+var MODELS = {
+  claude: { main: "inherit", mid: "sonnet", low: "haiku", order: ["haiku", "sonnet", "opus"] },
+  codex: {
+    main: "inherit",
+    mid: "gpt-6.1-sol",
+    low: "gpt-6-luna",
+    order: ["gpt-6-luna", "gpt-6.1-terra", "gpt-6-sol", "gpt-6.1-sol", "gpt-6-astra"]
+  }
+};
+var hostOf = (clientName) => /codex/i.test(clientName ?? "") ? "codex" : "claude";
 var newTicket = (role, round) => ({
   ticket: `T-${randomBytes(9).toString("hex")}`,
   role,
   round
 });
-var describeTickets = (tickets) => tickets.map((t) => ({ ticket: t.ticket, role: t.role, ...REVIEWERS[t.role] }));
+var describeTickets = (tickets, host) => tickets.map((t) => {
+  const { agent, tier, effort } = REVIEWERS[t.role];
+  return { ticket: t.ticket, role: t.role, agent, tier, model: MODELS[host][tier], effort };
+});
 var normalize = (text) => text.replace(/\s+/g, "");
 var includesExcerpt = (text, excerpt) => normalize(text).includes(normalize(excerpt));
 function paragraphs(text) {
@@ -37748,7 +37761,7 @@ function checkDraft(s, text, d, conservative) {
   return problems;
 }
 var comparableDeclaration = (d) => JSON.stringify(d, (key, value) => key === "note" ? void 0 : value);
-var runReviewsRule = (statusTool) => `\u6709 gmax_run_reviews \u5DE5\u5177\u6642\uFF0C\u628A story_id \u8207 reviewers \u50B3\u7D66\u5B83\uFF0C\u5B83\u56DE\u50B3\u5F8C\u547C\u53EB ${statusTool}\u3002\u6C92\u6709\u6642\u624D\u5728\u540C\u4E00\u5247\u8A0A\u606F\u5E73\u884C\u555F\u52D5 reviewers \u5217\u51FA\u7684\u5B50\u4EE3\u7406\uFF0C\u6BCF\u500B\u90FD\u5E36\u4E0A model \u8207 effort\uFF0C\u56DE\u5831\u5168\u90E8\u5B8C\u6210\u5F8C\u547C\u53EB ${statusTool}\uFF1B\u7B49\u5F85\u6642\u5FC5\u9808\u56DE\u61C9\u53EA\u5BEB\u300C\u4E3B\u6301\u4EBA\u69CB\u601D\u4E2D\u2026\u300D\u3002`;
+var runReviewsRule = (statusTool, host) => `\u6709 gmax_run_reviews \u5DE5\u5177\u6642\uFF0C\u628A story_id \u8207 reviewers \u50B3\u7D66\u5B83\uFF0C\u5B83\u56DE\u50B3\u5F8C\u547C\u53EB ${statusTool}\u3002\u6C92\u6709\u6642\u624D\u5728\u540C\u4E00\u5247\u8A0A\u606F\u5E73\u884C\u555F\u52D5 reviewers \u5217\u51FA\u7684\u5B50\u4EE3\u7406\uFF0C\u6BCF\u500B\u90FD\u5E36\u4E0A model \u8207 effort\uFF1Bmodel \u662F inherit\uFF0C\u6216\u6BD4\u4F60\u81EA\u5DF1\u7684\u6A21\u578B\u9AD8\u968E\uFF08\u7531\u4F4E\u5230\u9AD8\uFF1A${MODELS[host].order.join(" < ")}\uFF09\u6642\u4E0D\u8981\u5E36 model\uFF0C\u6CBF\u7528\u4F60\u81EA\u5DF1\u7684\u6A21\u578B\u3002\u56DE\u5831\u5168\u90E8\u5B8C\u6210\u5F8C\u547C\u53EB ${statusTool}\uFF1B\u7B49\u5F85\u6642\u5FC5\u9808\u56DE\u61C9\u53EA\u5BEB\u300C\u4E3B\u6301\u4EBA\u69CB\u601D\u4E2D\u2026\u300D\u3002`;
 function requireStatus(s, status, hint) {
   if (s.status !== status) throw new GmaxError(`\u76EE\u524D\u6545\u4E8B\u72C0\u614B\u662F ${s.status}\uFF0C\u6B64\u64CD\u4F5C\u9700\u8981 ${status}\u3002`, hint);
 }
@@ -37789,6 +37802,8 @@ var Engine = class {
     this.store = store;
   }
   store;
+  /** 連線完成後由 server 依 MCP 用戶端名稱設定。 */
+  host = "claude";
   preferencesGet() {
     return { ok: true, preferences: this.store.preferences(), next_action: "\u53EF\u7528 gmax_preferences_update \u4FEE\u6539\uFF0C\u4E4B\u5F8C\u958B\u7684\u65B0\u6545\u4E8B\u624D\u6703\u5957\u7528\u3002" };
   }
@@ -37884,9 +37899,9 @@ var Engine = class {
         phase: "authoring",
         warnings,
         round,
-        reviewers: describeTickets(tickets),
+        reviewers: describeTickets(tickets, this.host),
         retained_passes: retained,
-        next_action: tickets.length > 0 ? `${runReviewsRule("gmax_script_review_status")}\u63D0\u793A\u8A5E\u53EA\u50B3\u7968\u8B49\uFF0C\u4E0D\u53EF\u5305\u542B\u5287\u672C\u5167\u5BB9\u3002` : "\u4E0D\u9700\u8981\u5BE9\u67E5\uFF0C\u547C\u53EB gmax_story_start\u3002"
+        next_action: tickets.length > 0 ? `${runReviewsRule("gmax_script_review_status", this.host)}\u63D0\u793A\u8A5E\u53EA\u50B3\u7968\u8B49\uFF0C\u4E0D\u53EF\u5305\u542B\u5287\u672C\u5167\u5BB9\u3002` : "\u4E0D\u9700\u8981\u5BE9\u67E5\uFF0C\u547C\u53EB gmax_story_start\u3002"
       })
     };
   }
@@ -37904,7 +37919,7 @@ var Engine = class {
       ok: true,
       phase: "authoring",
       round: s.script_round,
-      pending: describeTickets(pending),
+      pending: describeTickets(pending, this.host),
       issues: Object.fromEntries(rejected.map((t) => [t.role, s.script_results[t.role].issues])),
       next_action
     };
@@ -38024,10 +38039,10 @@ var Engine = class {
           ok: true,
           phase: "reviewing",
           round,
-          reviewers: describeTickets(tickets),
+          reviewers: describeTickets(tickets, this.host),
           retained_passes: retained,
           length: lengthReport(text, s.settings.length_per_turn),
-          next_action: tickets.length > 0 ? `${runReviewsRule("gmax_review_status")}\u63D0\u793A\u8A5E\u53EA\u50B3\u7968\u8B49\u3002` : "\u4E0D\u9700\u8981\u5BE9\u67E5\uFF0C\u76F4\u63A5\u547C\u53EB gmax_turn_commit\u3002"
+          next_action: tickets.length > 0 ? `${runReviewsRule("gmax_review_status", this.host)}\u63D0\u793A\u8A5E\u53EA\u50B3\u7968\u8B49\u3002` : "\u4E0D\u9700\u8981\u5BE9\u67E5\uFF0C\u76F4\u63A5\u547C\u53EB gmax_turn_commit\u3002"
         })
       };
     });
@@ -38100,7 +38115,7 @@ var Engine = class {
       ok: true,
       phase: "reviewing",
       round: cur.round,
-      pending: describeTickets(pending),
+      pending: describeTickets(pending, this.host),
       issues: Object.fromEntries(rejected.map(([role, r]) => [role, r.issues])),
       ready_to_commit: cur.text !== void 0 && pending.length === 0 && rejected.length === 0,
       next_action
@@ -38228,7 +38243,7 @@ var Engine = class {
 // src/server.ts
 var INSTRUCTIONS = `GMax \u662F\u6587\u5B57\u4E92\u52D5\u5C0F\u8AAA\u7684\u8F14\u52A9\u5DE5\u5177\u3002\u7576\u4F7F\u7528\u8005\u60F3\u73A9\u6587\u5B57\u5192\u96AA\u3001\u4E92\u52D5\u5C0F\u8AAA\u3001\u89D2\u8272\u626E\u6F14\u6216\u8DD1\u5718\u6642\u4F7F\u7528\u3002
 \u5148\u548C\u73A9\u5BB6\u6B63\u5E38\u8A0E\u8AD6\u60F3\u73A9\u4EC0\u9EBC\uFF0C\u8AC7\u5B9A\u5F8C\u518D\u7528 gmax_story_create \u958B\u59CB\uFF1B\u73A9\u5BB6\u96A8\u6642\u53EF\u4EE5\u8DF3\u51FA\u6545\u4E8B\u9592\u804A\uFF0C\u90A3\u4E9B\u5C0D\u8A71\u4E0D\u7528\u7D93\u904E\u9019\u88E1\u3002
-\u9632\u96F7\u898F\u5247\uFF1A\u5DE5\u5177\u56DE\u50B3\u7684\u5287\u672C\u8207\u5BE9\u67E5\u5167\u5BB9\u4E0D\u53EF\u51FA\u73FE\u5728\u7D66\u73A9\u5BB6\u7684\u6587\u5B57\u88E1\uFF0C\u547C\u53EB\u5BE9\u67E5\u5B50\u4EE3\u7406\u6642\u63D0\u793A\u8A5E\u53EA\u50B3\u7968\u8B49\uFF0C\u4E26\u5E36\u4E0A reviewers \u5217\u51FA\u7684 model \u8207 effort\u3002
+\u9632\u96F7\u898F\u5247\uFF1A\u5DE5\u5177\u56DE\u50B3\u7684\u5287\u672C\u8207\u5BE9\u67E5\u5167\u5BB9\u4E0D\u53EF\u51FA\u73FE\u5728\u7D66\u73A9\u5BB6\u7684\u6587\u5B57\u88E1\uFF0C\u547C\u53EB\u5BE9\u67E5\u5B50\u4EE3\u7406\u6642\u63D0\u793A\u8A5E\u53EA\u50B3\u7968\u8B49\uFF0C\u4E26\u4F9D next_action \u5E36\u4E0A reviewers \u5217\u51FA\u7684 model \u8207 effort\u3002
 \u6BCF\u500B\u56DE\u61C9\u90FD\u6709 next_action\uFF0C\u7167\u8457\u505A\u5373\u53EF\u3002\u82E5\u6709 gmax-play skill\uFF0C\u8ACB\u5148\u8F09\u5165\u3002`;
 var storyId = external_exports.string().describe("\u6545\u4E8B ID");
 var LARGE = { "anthropic/maxResultSizeChars": 2e5 };
@@ -38248,6 +38263,9 @@ function fail(err) {
 function createServer(store = new Store()) {
   const engine = new Engine(store);
   const server = new McpServer({ name: "gmax", version: "0.1.0" }, { instructions: INSTRUCTIONS });
+  server.server.oninitialized = () => {
+    engine.host = hostOf(server.server.getClientVersion()?.name);
+  };
   const tool = (name, description, inputSchema, run, extra = {}) => {
     const config2 = {
       description,

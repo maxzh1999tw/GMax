@@ -1,4 +1,5 @@
-// 審查子代理的唯一來源：同時產生 Claude Code 與 Codex 的設定檔
+// 審查子代理的唯一來源：同時產生 Claude Code 與 Codex 的設定檔。
+// 兩邊都不寫死模型：沒指定時沿用主對話的模型，較低階的由票證的 model 指定。
 const PROCEDURE = `你是互動小說的審查者，只負責審查，不負責創作。
 
 提示詞會提供 story_id 與 ticket。步驟：
@@ -13,7 +14,6 @@ export const AGENTS = [
   {
     name: 'gmax-logic-reviewer',
     description: 'GMax 審查：情節、事實、因果與時間線是否自洽，也審查劇本結構。依票證工作。',
-    model: 'sonnet',
     effort: 'high',
     codexEffort: 'high',
     focus: '你最重視因果、時間線與事實一致性。',
@@ -21,7 +21,6 @@ export const AGENTS = [
   {
     name: 'gmax-character-reviewer',
     description: 'GMax 審查：角色言行是否符合設定、是否說出不該知道的資訊。依票證工作。',
-    model: 'sonnet',
     effort: 'medium',
     codexEffort: 'medium',
     focus: '你最重視角色一致性。你只會拿到該角色知道的資訊，超出範圍的內容就是問題。',
@@ -29,7 +28,6 @@ export const AGENTS = [
   {
     name: 'gmax-ledger-reviewer',
     description: 'GMax 審查：消耗性參數填寫是否正確、故事是否朝結局收束，也審查劇本走向。依票證工作。',
-    model: 'sonnet',
     effort: 'medium',
     codexEffort: 'medium',
     focus: '你最重視參數是否如實申報，以及故事是否在收束。',
@@ -37,7 +35,6 @@ export const AGENTS = [
   {
     name: 'gmax-registry-reviewer',
     description: 'GMax 審查：新事實、揭露與知識更新是否都有登記。依票證工作。',
-    model: 'haiku',
     effort: 'low',
     codexEffort: 'low',
     focus: '你只檢查登記是否完整。',
@@ -52,7 +49,7 @@ export function claudeAgent(a) {
   return `---
 name: ${a.name}
 description: ${a.description}
-model: ${a.model}
+model: inherit
 effort: ${a.effort}
 tools: ${CLAUDE_TOOLS}
 ---

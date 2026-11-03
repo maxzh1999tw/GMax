@@ -18,7 +18,7 @@
   | 參數與收束 | Sonnet／medium（也審劇本走向） | 參數填得對不對、故事有沒有在收束 |
   | 登記 | Haiku／low | 新事實與揭露有沒有漏記 |
 
-  每張票證都會列出 `model` 與 `effort`。Claude Code 由 Mod 的 `gmax_run_reviews` 直接呼叫模型平行審查，不開子代理，所以對話裡不會有回報訊息；沒有 Mod 時（例如 Codex）主持人才自己開子代理。這張對照表在 `src/engine.ts` 的 `REVIEWERS`，子代理 frontmatter 的預設值在 `scripts/agents.mjs`。
+  每張票證都會列出 `model` 與 `effort`。主對話的模型是上限：劇本邏輯審查沿用主對話的模型（`inherit`），其他角色派較低階的模型，但不會超過主對話，例如用 Haiku 開場時全部都是 Haiku。Codex 會改派 Codex 的模型名稱（`gpt-6.1-sol`、`gpt-6-luna`）。Claude Code 由 Mod 的 `gmax_run_reviews` 直接呼叫模型平行審查，不開子代理，所以對話裡不會有回報訊息；沒有 Mod 時（例如 Codex）主持人才自己開子代理。這張對照表在 `src/engine.ts` 的 `REVIEWERS` 與 `MODELS`，子代理設定由 `scripts/agents.mjs` 產生，都不寫死模型。
 
   文風不是退稿理由。退稿最多修改 3 次（可調），之後只能交出不新增內容的保守版，並記錄為降級回合。
 - **劇本審查會收斂**：退稿後用 `gmax_script_patch` 只改有問題的部分。已通過的審查者不重審（除非改動超過三成），重審者只看舊問題與改動處。修改上限到了之後，修改會直接套用，不再送審。

@@ -115,18 +115,41 @@ test('Mod 直接呼叫模型完成審查：指定模型與思考程度、錯誤�
     return { value: { isAnswered: true, text, usage: {} } } as never
   })
 
+  on('session.model', () => ({ value: 'claude-opus-5-5' }) as never)
+
   const reply = await ($.tool.call({
     tool: 'mcp__gmax__gmax_run_reviews',
     story_id: 's1',
-    reviewers: [{ ticket: 'T-1', agent: 'gmax-logic-reviewer', model: 'opus', effort: 'high' }],
+    reviewers: [{ ticket: 'T-1', agent: 'gmax-logic-reviewer', model: 'inherit', effort: 'high' }],
   } as never) as Promise<{ text: string }>)
 
   expect(spawned).toBe(0)
-  expect(asked[0]).toMatchObject({ model: 'opus', effort: 'high', prompt: '資料 T-1' })
+  expect(asked[0]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high', prompt: '資料 T-1' })
   expect(asked[1]!.prompt).toContain('不是有效的 JSON')
   expect(asked[2]!.prompt).toContain('引用的 ID 不存在')
   expect(submitted[1]).toMatchObject({ story_id: 's1', ticket: 'T-1', verdict: 'pass', notes: '好' })
   expect(reply.text).toContain('審查都已完成')
+})
+
+test('主對話的模型是上限：用 Haiku 開場時全部降成 Haiku', async ($, on) => {
+  const asked: string[] = []
+  on('session.model', () => ({ value: 'claude-haiku-5-5' }) as never)
+  on('tool.call', { tool: 'mcp__plugin_gmax_gmax__gmax_review_packet' }, () => ({ result: {}, text: '資料' }))
+  on('tool.call', { tool: 'mcp__plugin_gmax_gmax__gmax_review_submit' }, () => ({ result: {}, text: 'ok' }))
+  on('model.complete', ($, e) => {
+    asked.push((e as { model: string }).model)
+    return { value: { isAnswered: true, text: '{"verdict":"pass"}', usage: {} } } as never
+  })
+  await $.tool.call({
+    tool: 'mcp__gmax__gmax_run_reviews',
+    story_id: 's1',
+    reviewers: [
+      { ticket: 'T-1', agent: 'gmax-logic-reviewer', model: 'inherit' },
+      { ticket: 'T-2', agent: 'gmax-ledger-reviewer', model: 'sonnet' },
+      { ticket: 'T-3', agent: 'gmax-registry-reviewer', model: 'haiku' },
+    ],
+  } as never)
+  expect(asked.sort()).toEqual(['claude-haiku-5-5', 'claude-haiku-5-5', 'haiku'])
 })
 
 test('模型一直失敗時回報未完成，不會卡住', async ($, on) => {

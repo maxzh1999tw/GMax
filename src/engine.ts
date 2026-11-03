@@ -14,15 +14,33 @@ import { exportMarkdown, reviewPacket, scriptPacket, writerBrief } from './packe
 /** 改動超過此比例的段落時，已通過的審查者全部重審。 */
 const MAJOR_CHANGE_RATIO = 0.3;
 
-/** 劇本一旦有錯，後面每回合都受影響，所以高階模型只用在劇本邏輯。 */
-export const REVIEWERS: Record<Role, { agent: string; model: string; effort: string }> = {
-  script_logic: { agent: 'gmax-logic-reviewer', model: 'opus', effort: 'high' },
-  logic: { agent: 'gmax-logic-reviewer', model: 'sonnet', effort: 'high' },
-  script_drama: { agent: 'gmax-ledger-reviewer', model: 'sonnet', effort: 'medium' },
-  ledger: { agent: 'gmax-ledger-reviewer', model: 'sonnet', effort: 'medium' },
-  character: { agent: 'gmax-character-reviewer', model: 'sonnet', effort: 'medium' },
-  registry: { agent: 'gmax-registry-reviewer', model: 'haiku', effort: 'low' },
+export type Tier = 'main' | 'mid' | 'low';
+export type Host = 'claude' | 'codex';
+
+/**
+ * 主對話的模型是上限，額度少的玩家用低階模型開場，審查也跟著降級。
+ * 劇本一旦有錯，後面每回合都受影響，所以只有劇本邏輯沿用主對話的模型。
+ */
+export const REVIEWERS: Record<Role, { agent: string; tier: Tier; effort: string }> = {
+  script_logic: { agent: 'gmax-logic-reviewer', tier: 'main', effort: 'high' },
+  logic: { agent: 'gmax-logic-reviewer', tier: 'mid', effort: 'high' },
+  script_drama: { agent: 'gmax-ledger-reviewer', tier: 'mid', effort: 'medium' },
+  ledger: { agent: 'gmax-ledger-reviewer', tier: 'mid', effort: 'medium' },
+  character: { agent: 'gmax-character-reviewer', tier: 'mid', effort: 'medium' },
+  registry: { agent: 'gmax-registry-reviewer', tier: 'low', effort: 'low' },
 };
+
+/** main 一律是 inherit：沿用主對話的模型。order 由低到高，用來判斷是否超過主對話的模型。 */
+export const MODELS: Record<Host, Record<Tier, string> & { order: string[] }> = {
+  claude: { main: 'inherit', mid: 'sonnet', low: 'haiku', order: ['haiku', 'sonnet', 'opus'] },
+  codex: {
+    main: 'inherit', mid: 'gpt-6.1-sol', low: 'gpt-6-luna',
+    order: ['gpt-6-luna', 'gpt-6.1-terra', 'gpt-6-sol', 'gpt-6.1-sol', 'gpt-6-astra'],
+  },
+};
+
+/** MCP 用戶端名稱只有 Codex 會帶 codex，其餘都當成 Claude Code。 */
+export const hostOf = (clientName?: string): Host => (/codex/i.test(clientName ?? '') ? 'codex' : 'claude');
 
 const newTicket = (role: Role, round: number): Ticket => ({
   ticket: `T-${randomBytes(9).toString('hex')}`,
@@ -30,8 +48,11 @@ const newTicket = (role: Role, round: number): Ticket => ({
   round,
 });
 
-const describeTickets = (tickets: Ticket[]) =>
-  tickets.map(t => ({ ticket: t.ticket, role: t.role, ...REVIEWERS[t.role] }));
+const describeTickets = (tickets: Ticket[], host: Host) =>
+  tickets.map(t => {
+    const { agent, tier, effort } = REVIEWERS[t.role];
+    return { ticket: t.ticket, role: t.role, agent, tier, model: MODELS[host][tier], effort };
+  });
 
 const normalize = (text: string) => text.replace(/\s+/g, '');
 
@@ -265,8 +286,8 @@ export function checkDraft(s: StoryState, text: string, d: Declaration, conserva
 const comparableDeclaration = (d?: Declaration) =>
   JSON.stringify(d, (key, value) => (key === 'note' ? undefined : value));
 
-const runReviewsRule = (statusTool: string) =>
-  `有 gmax_run_reviews 工具時，把 story_id 與 reviewers 傳給它，它回傳後呼叫 ${statusTool}。沒有時才在同一則訊息平行啟動 reviewers 列出的子代理，每個都帶上 model 與 effort，回報全部完成後呼叫 ${statusTool}；等待時必須回應只寫「主持人構思中…」。`;
+const runReviewsRule = (statusTool: string, host: Host) =>
+  `有 gmax_run_reviews 工具時，把 story_id 與 reviewers 傳給它，它回傳後呼叫 ${statusTool}。沒有時才在同一則訊息平行啟動 reviewers 列出的子代理，每個都帶上 model 與 effort；model 是 inherit，或比你自己的模型高階（由低到高：${MODELS[host].order.join(' < ')}）時不要帶 model，沿用你自己的模型。回報全部完成後呼叫 ${statusTool}；等待時必須回應只寫「主持人構思中…」。`;
 
 function requireStatus(s: StoryState, status: StoryState['status'], hint: string): void {
   if (s.status !== status) throw new GmaxError(`目前故事狀態是 ${s.status}，此操作需要 ${status}。`, hint);
@@ -312,6 +333,9 @@ const reviewInput = z.object({
 });
 
 export class Engine {
+  /** 連線完成後由 server 依 MCP 用戶端名稱設定。 */
+  host: Host = 'claude';
+
   constructor(readonly store: Store) {}
 
   preferencesGet() {
@@ -409,10 +433,10 @@ export class Engine {
       events: [{ type: 'script_submitted', script, tickets, retained, changed }],
       result: () => ({
         ok: true, phase: 'authoring', warnings, round,
-        reviewers: describeTickets(tickets),
+        reviewers: describeTickets(tickets, this.host),
         retained_passes: retained,
         next_action: tickets.length > 0
-          ? `${runReviewsRule('gmax_script_review_status')}提示詞只傳票證，不可包含劇本內容。`
+          ? `${runReviewsRule('gmax_script_review_status', this.host)}提示詞只傳票證，不可包含劇本內容。`
           : '不需要審查，呼叫 gmax_story_start。',
       }),
     };
@@ -432,7 +456,7 @@ export class Engine {
     }
     return {
       ok: true, phase: 'authoring', round: s.script_round,
-      pending: describeTickets(pending),
+      pending: describeTickets(pending, this.host),
       issues: Object.fromEntries(rejected.map(t => [t.role, s.script_results[t.role]!.issues])),
       next_action,
     };
@@ -557,11 +581,11 @@ export class Engine {
         events: [{ type: 'draft_submitted', text, declaration, conservative, tickets, retained }],
         result: () => ({
           ok: true, phase: 'reviewing', round,
-          reviewers: describeTickets(tickets),
+          reviewers: describeTickets(tickets, this.host),
           retained_passes: retained,
           length: lengthReport(text, s.settings.length_per_turn),
           next_action: tickets.length > 0
-            ? `${runReviewsRule('gmax_review_status')}提示詞只傳票證。`
+            ? `${runReviewsRule('gmax_review_status', this.host)}提示詞只傳票證。`
             : '不需要審查，直接呼叫 gmax_turn_commit。',
         }),
       };
@@ -639,7 +663,7 @@ export class Engine {
     }
     return {
       ok: true, phase: 'reviewing', round: cur.round,
-      pending: describeTickets(pending),
+      pending: describeTickets(pending, this.host),
       issues: Object.fromEntries(rejected.map(([role, r]) => [role, r!.issues])),
       ready_to_commit: cur.text !== undefined && pending.length === 0 && rejected.length === 0,
       next_action,

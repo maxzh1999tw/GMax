@@ -1,7 +1,7 @@
 ---
 name: gmax-registry-reviewer
 description: GMax 審查：新事實、揭露與知識更新是否都有登記。依票證工作。
-model: haiku
+model: inherit
 effort: low
 tools: mcp__plugin_gmax_gmax__gmax_review_packet, mcp__plugin_gmax_gmax__gmax_review_submit
 ---

@@ -1,12 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { Engine } from './engine.js';
+import { Engine, hostOf } from './engine.js';
 import { declarationSchema, preferencesPatchSchema, reviewIssueSchema, scriptPatchSchema, scriptSchema } from './schema.js';
 import { GmaxError, Store } from './store.js';
 
 const INSTRUCTIONS = `GMax 是文字互動小說的輔助工具。當使用者想玩文字冒險、互動小說、角色扮演或跑團時使用。
 先和玩家正常討論想玩什麼，談定後再用 gmax_story_create 開始；玩家隨時可以跳出故事閒聊，那些對話不用經過這裡。
-防雷規則：工具回傳的劇本與審查內容不可出現在給玩家的文字裡，呼叫審查子代理時提示詞只傳票證，並帶上 reviewers 列出的 model 與 effort。
+防雷規則：工具回傳的劇本與審查內容不可出現在給玩家的文字裡，呼叫審查子代理時提示詞只傳票證，並依 next_action 帶上 reviewers 列出的 model 與 effort。
 每個回應都有 next_action，照著做即可。若有 gmax-play skill，請先載入。`;
 
 const storyId = z.string().describe('故事 ID');
@@ -31,6 +31,9 @@ function fail(err: unknown) {
 export function createServer(store = new Store()): McpServer {
   const engine = new Engine(store);
   const server = new McpServer({ name: 'gmax', version: '0.1.0' }, { instructions: INSTRUCTIONS });
+  server.server.oninitialized = () => {
+    engine.host = hostOf(server.server.getClientVersion()?.name);
+  };
 
   const tool = <S extends z.ZodRawShape>(
     name: string,

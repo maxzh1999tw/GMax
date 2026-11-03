@@ -1,7 +1,7 @@
 ---
 name: gmax-ledger-reviewer
 description: GMax 審查：消耗性參數填寫是否正確、故事是否朝結局收束，也審查劇本走向。依票證工作。
-model: sonnet
+model: inherit
 effort: medium
 tools: mcp__plugin_gmax_gmax__gmax_review_packet, mcp__plugin_gmax_gmax__gmax_review_submit
 ---
